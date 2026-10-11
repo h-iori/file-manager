@@ -23,6 +23,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ioristudios.filemanager.data.DefaultDataRepository
+import com.ioristudios.filemanager.haptics.HapticFeedbackManager
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.theme.FilesTheme
 import com.ioristudios.filemanager.ui.main.MainScreen
 import com.ioristudios.filemanager.ui.main.MainScreenViewModel
@@ -52,6 +54,8 @@ class MainActivity : ComponentActivity() {
         viewModel.refresh(hasPermission = checkHasPermission())
     }
 
+    private val hapticManager by lazy { HapticFeedbackManager(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = DefaultDataRepository(applicationContext)
@@ -62,13 +66,17 @@ class MainActivity : ComponentActivity() {
         requestHighestStoragePermission()
 
         setContent {
-            val settingsState by viewModel.settingsUiState.collectAsStateWithLifecycle()
-            FilesTheme(themeMode = settingsState.themeMode) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    MainScreen(viewModel = viewModel)
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.ioristudios.filemanager.haptics.LocalAppHaptics provides hapticManager
+            ) {
+                val settingsState by viewModel.settingsUiState.collectAsStateWithLifecycle()
+                FilesTheme(themeMode = settingsState.themeMode) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        MainScreen(viewModel = viewModel)
+                    }
                 }
             }
         }

@@ -35,17 +35,22 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ioristudios.filemanager.haptics.HapticType
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -82,8 +87,7 @@ fun SettingsScreen(
     ) {
         // Dedicated Settings Header with Back Arrow Button
         SettingsHeader(
-            onBackClick = onBackClick,
-            onSearchClick = { showMessage("Search settings coming soon") }
+            onBackClick = onBackClick
         )
 
         // Scrollable content
@@ -278,7 +282,111 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 3: About Files
+            // Section 3: Haptics & Tactile Physics
+            SettingsSectionHeader(
+                title = "Haptics & Tactile Physics",
+                tag = "TACTILE ENGINE"
+            )
+
+            val haptics = LocalAppHaptics.current
+            var hapticsActive by remember { mutableStateOf(haptics.isEnabled) }
+
+            SettingsCard {
+                // Master Haptic Feedback Switch
+                SettingsToggleRow(
+                    icon = Icons.Default.Vibration,
+                    title = "Haptic Feedback",
+                    subtitle = "Professional-grade tactile responses on click & gesture",
+                    checked = hapticsActive,
+                    onCheckedChange = { checked ->
+                        haptics.isEnabled = checked
+                        hapticsActive = checked
+                        if (checked) {
+                            haptics.trigger(HapticType.SWITCH_TOGGLE)
+                        }
+                        showMessage(if (checked) "Haptic feedback enabled" else "Haptic feedback muted")
+                    }
+                )
+
+                HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
+
+                // Interactive Tactile Playground
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.TouchApp,
+                            contentDescription = null,
+                            tint = FilesTheme.colors.primaryAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Interactive Tactile Playground",
+                            fontFamily = OutfitFontFamily,
+                            color = FilesTheme.colors.textPrimary,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Text(
+                        text = "Tap buttons below to feel calibrated physical waveforms on your device's motor.",
+                        fontFamily = OutfitFontFamily,
+                        color = FilesTheme.colors.textSecondary,
+                        fontSize = 11.5.sp,
+                        lineHeight = 15.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        HapticPlaygroundChip(
+                            label = "Tab Tick",
+                            type = HapticType.NAV_TICK,
+                            modifier = Modifier.weight(1f)
+                        )
+                        HapticPlaygroundChip(
+                            label = "Button Pop",
+                            type = HapticType.CLICK,
+                            modifier = Modifier.weight(1f)
+                        )
+                        HapticPlaygroundChip(
+                            label = "Switch Snap",
+                            type = HapticType.SWITCH_TOGGLE,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        HapticPlaygroundChip(
+                            label = "Folder Open",
+                            type = HapticType.FOLDER_OPEN,
+                            modifier = Modifier.weight(1f)
+                        )
+                        HapticPlaygroundChip(
+                            label = "Storage Clean",
+                            type = HapticType.HERO_CLEAN_PULSE,
+                            modifier = Modifier.weight(1f)
+                        )
+                        HapticPlaygroundChip(
+                            label = "Delete Thud",
+                            type = HapticType.DESTRUCTIVE,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // Section 4: About Files
             SettingsSectionHeader(
                 title = "About Files",
                 tag = "IORI STUDIOS"
@@ -413,11 +521,11 @@ fun SettingsScreen(
 
 /**
  * Dedicated Settings Header with back arrow and Settings title in Outfit typography.
+ * The Search button is removed per user specification.
  */
 @Composable
 fun SettingsHeader(
     onBackClick: () -> Unit,
-    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -425,32 +533,21 @@ fun SettingsHeader(
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            GlassIconButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                onClick = onBackClick
-            )
-
-            Text(
-                text = "Settings",
-                fontFamily = OutfitFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                color = FilesTheme.colors.textPrimary
-            )
-        }
-
         GlassIconButton(
-            icon = Icons.Default.Search,
-            contentDescription = "Search",
-            onClick = onSearchClick
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "Back",
+            onClick = onBackClick
+        )
+
+        Text(
+            text = "Settings",
+            fontFamily = OutfitFontFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            color = FilesTheme.colors.textPrimary
         )
     }
 }
@@ -593,11 +690,16 @@ fun ThemeSegmentItem(
         Modifier.background(Color.Transparent)
     }
 
+    val haptics = LocalAppHaptics.current
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .then(bgModifier)
-            .clickable(onClick = onClick)
+            .clickable {
+                haptics.trigger(HapticType.SEGMENT_SLIDE)
+                onClick()
+            }
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -668,13 +770,14 @@ fun SettingsToggleRow(
 }
 
 /**
- * Custom Animated Toggle Switch matching Stitch Design
+ * Custom Animated Toggle Switch matching Stitch Design with physical magnetic latch haptics
  */
 @Composable
 fun GlassSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
     val thumbOffset by animateDpAsState(
         targetValue = if (checked) 22.dp else 2.dp,
         animationSpec = tween(durationMillis = 180),
@@ -700,7 +803,10 @@ fun GlassSwitch(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
-            ) { onCheckedChange(!checked) }
+            ) {
+                haptics.trigger(HapticType.SWITCH_TOGGLE)
+                onCheckedChange(!checked)
+            }
             .padding(vertical = 3.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -711,6 +817,38 @@ fun GlassSwitch(
                 .shadow(4.dp, CircleShape)
                 .clip(CircleShape)
                 .background(Color.White)
+        )
+    }
+}
+
+/**
+ * Interactive playground chip for testing tactile haptic profiles in real-time.
+ */
+@Composable
+fun HapticPlaygroundChip(
+    label: String,
+    type: HapticType,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalAppHaptics.current
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (FilesTheme.isDark) Color(0x18FFFFFF) else Color(0xFFF1F5F9))
+            .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(10.dp))
+            .clickable {
+                haptics.trigger(type)
+            }
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontFamily = OutfitFontFamily,
+            color = FilesTheme.colors.textPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
         )
     }
 }

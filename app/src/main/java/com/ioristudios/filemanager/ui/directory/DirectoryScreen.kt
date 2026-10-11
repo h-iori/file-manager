@@ -58,6 +58,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.ioristudios.filemanager.haptics.HapticType
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.ui.components.GlassContextMenu
 import com.ioristudios.filemanager.ui.components.shareFileToSystem
 import androidx.compose.runtime.Composable
@@ -101,6 +103,7 @@ fun DirectoryScreen(
     val state by viewModel.directoryUiState.collectAsStateWithLifecycle()
     val settingsState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val haptics = LocalAppHaptics.current
 
     var selectedItemForDetails by remember { mutableStateOf<DirectoryItem?>(null) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -160,7 +163,10 @@ fun DirectoryScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(FilesTheme.colors.surface)
                         .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                        .clickable { sortMenuExpanded = true }
+                        .clickable {
+                            haptics.trigger(HapticType.SELECTION_NOTCH)
+                            sortMenuExpanded = true
+                        }
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -219,6 +225,7 @@ fun DirectoryScreen(
                                 }
                             },
                             onClick = {
+                                haptics.trigger(HapticType.SELECTION_NOTCH)
                                 viewModel.setSortOption(option)
                                 sortMenuExpanded = false
                             },
@@ -324,6 +331,7 @@ fun BreadcrumbsBar(
     onBreadcrumbClick: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
     val scrollState = rememberScrollState()
 
     Row(
@@ -335,7 +343,10 @@ fun BreadcrumbsBar(
     ) {
         if (state.breadcrumbs.size > 1) {
             IconButton(
-                onClick = onBackClick,
+                onClick = {
+                    haptics.trigger(HapticType.NAV_TICK)
+                    onBackClick()
+                },
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
@@ -362,7 +373,10 @@ fun BreadcrumbsBar(
                         .background(
                             if (isLast) (if (FilesTheme.isDark) Color(0xFF20173D) else Color(0xFFEDE4FF)) else Color.Transparent
                         )
-                        .clickable(enabled = !isLast) { onBreadcrumbClick(segment.fullPath) }
+                        .clickable(enabled = !isLast) {
+                            haptics.trigger(HapticType.NAV_TICK)
+                            onBreadcrumbClick(segment.fullPath)
+                        }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
@@ -610,13 +624,22 @@ fun DirectoryItemRow(
         }
     }
 
+    val haptics = LocalAppHaptics.current
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(FilesTheme.colors.surface)
             .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
+            .clickable {
+                if (item.isDirectory) {
+                    haptics.trigger(HapticType.FOLDER_OPEN)
+                } else {
+                    haptics.trigger(HapticType.CLICK)
+                }
+                onClick()
+            }
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Row(
@@ -674,7 +697,10 @@ fun DirectoryItemRow(
             // More Options Menu Button
             Box {
                 IconButton(
-                    onClick = { menuExpanded = true },
+                    onClick = {
+                        haptics.trigger(HapticType.MENU_POP)
+                        menuExpanded = true
+                    },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(

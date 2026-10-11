@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.ioristudios.filemanager.data.StorageOverview
+import com.ioristudios.filemanager.haptics.HapticType
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.theme.CardBorderPurple
 import com.ioristudios.filemanager.theme.ChartPhotosCyan
 import com.ioristudios.filemanager.theme.ChartVideosPurple
@@ -250,15 +252,20 @@ fun GlassIconButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hapticType: HapticType = HapticType.CLICK
 ) {
+    val haptics = LocalAppHaptics.current
     Box(
         modifier = modifier
             .size(38.dp)
             .clip(CircleShape)
             .background(if (FilesTheme.isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
             .border(1.dp, if (FilesTheme.isDark) Color(0x1EFFFFFF) else Color(0xFFE2E8F0), CircleShape)
-            .clickable(onClick = onClick),
+            .clickable {
+                haptics.trigger(hapticType)
+                onClick()
+            },
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -282,6 +289,7 @@ fun GlassContextMenu(
     onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
@@ -303,6 +311,7 @@ fun GlassContextMenu(
             iconBg = if (FilesTheme.isDark) Color(0xFF0284C7).copy(alpha = 0.22f) else Color(0xFFE0F2FE),
             label = "Open",
             onClick = {
+                haptics.trigger(HapticType.CLICK)
                 onDismissRequest()
                 onOpen()
             }
@@ -315,6 +324,7 @@ fun GlassContextMenu(
             iconBg = if (FilesTheme.isDark) Color(0xFF9333EA).copy(alpha = 0.22f) else Color(0xFFEEF2FF),
             label = "Details",
             onClick = {
+                haptics.trigger(HapticType.CLICK)
                 onDismissRequest()
                 onDetails()
             }
@@ -327,6 +337,7 @@ fun GlassContextMenu(
             iconBg = if (FilesTheme.isDark) Color(0xFF0F766E).copy(alpha = 0.25f) else Color(0xFFD1FAE5),
             label = "Share",
             onClick = {
+                haptics.trigger(HapticType.CLICK)
                 onDismissRequest()
                 onShare()
             }
@@ -347,6 +358,7 @@ fun GlassContextMenu(
             label = "Delete",
             isDanger = true,
             onClick = {
+                haptics.trigger(HapticType.DESTRUCTIVE)
                 onDismissRequest()
                 onDelete()
             }

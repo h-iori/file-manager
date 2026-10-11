@@ -77,6 +77,8 @@ import androidx.compose.runtime.setValue
 import com.ioristudios.filemanager.ui.components.FileDetailsModalDialog
 import com.ioristudios.filemanager.ui.components.GlassContextMenu
 import com.ioristudios.filemanager.ui.components.GlassIconButton
+import com.ioristudios.filemanager.haptics.HapticType
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.ui.components.StorageDonutChart
 import com.ioristudios.filemanager.ui.components.shareFileToSystem
 import androidx.compose.ui.Alignment
@@ -484,13 +486,15 @@ fun AppHeader(
             GlassIconButton(
                 icon = Icons.Outlined.Search,
                 contentDescription = "Search",
-                onClick = onSearchClick
+                onClick = onSearchClick,
+                hapticType = HapticType.CLICK
             )
             if (showMenuButton) {
                 GlassIconButton(
                     icon = Icons.Outlined.MoreVert,
                     contentDescription = "More",
-                    onClick = onMenuClick
+                    onClick = onMenuClick,
+                    hapticType = HapticType.MENU_POP
                 )
             }
         }
@@ -502,6 +506,7 @@ fun StorageHeroCard(
     storage: StorageOverview,
     onCardClick: () -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -512,7 +517,10 @@ fun StorageHeroCard(
                 )
             )
             .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
-            .clickable(onClick = onCardClick)
+            .clickable {
+                haptics.trigger(HapticType.FOLDER_OPEN)
+                onCardClick()
+            }
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -877,12 +885,17 @@ fun CategoryCard(
         }
     }
 
+    val haptics = LocalAppHaptics.current
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(FilesTheme.colors.surface)
             .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
+            .clickable {
+                haptics.trigger(HapticType.FOLDER_OPEN)
+                onClick()
+            }
             .padding(14.dp)
     ) {
         Column(
@@ -1080,6 +1093,8 @@ fun CleanupRecommendationCard(
                         }
                     }
 
+                    val haptics = LocalAppHaptics.current
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -1089,7 +1104,10 @@ fun CleanupRecommendationCard(
                                 )
                             )
                             .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onCleanupClick)
+                            .clickable {
+                                haptics.trigger(HapticType.HERO_CLEAN_PULSE)
+                                onCleanupClick()
+                            }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1232,11 +1250,16 @@ fun RecentFileRow(
         }
     }
 
+    val haptics = LocalAppHaptics.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clickable {
+                haptics.trigger(HapticType.CLICK)
+                onClick()
+            }
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1293,7 +1316,10 @@ fun RecentFileRow(
 
         Box {
             IconButton(
-                onClick = { menuExpanded = true },
+                onClick = {
+                    haptics.trigger(HapticType.MENU_POP)
+                    menuExpanded = true
+                },
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
@@ -1374,12 +1400,18 @@ fun BottomNavTabItem(
     contentDescription: String,
     onClick: () -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
+    val handleTabClick = {
+        haptics.trigger(HapticType.NAV_TICK)
+        onClick()
+    }
+
     if (isActive) {
         Box(
             modifier = Modifier
                 .clip(CircleShape)
                 .background(FilesTheme.colors.bottomNavActiveBg)
-                .clickable(onClick = onClick)
+                .clickable(onClick = handleTabClick)
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -1402,7 +1434,7 @@ fun BottomNavTabItem(
             }
         }
     } else {
-        IconButton(onClick = onClick) {
+        IconButton(onClick = handleTabClick) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
