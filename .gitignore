@@ -1,0 +1,70 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+*.dex
+*.dm
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+app/build/
+**/build/
+
+# Gradle files
+.gradle/
+buildOutput/
+
+# Local configuration file (sdk.dir, local properties)
+local.properties
+
+# Proguard folder
+proguard/
+
+# Log Files
+*.log
+
+# Android Studio & IntelliJ IDEA files
+*.iml
+.idea/
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/misc.xml
+.idea/deploymentTargetDropDown.xml
+*.iws
+
+# Kotlin compiler caches
+.kotlin/
+.kotlin-lsp/
+
+# Keystore files (never commit release keys)
+*.jks
+*.keystore
+
+# Native build folders
+.externalNativeBuild/
+.cxx/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Agent and temporary files
+.agents/
+.claude/
+.claude-flow/
+.swarm/
+CLAUDE.md
+.mcp.json
