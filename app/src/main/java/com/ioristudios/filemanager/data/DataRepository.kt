@@ -13,15 +13,24 @@ import java.io.File
 interface DataRepository {
     val homeScreenData: StateFlow<HomeScreenData>
     val directoryState: StateFlow<DirectoryScreenState>
+    val settingsState: StateFlow<SettingsUiState>
     fun refresh(hasPermission: Boolean)
     fun loadDirectory(path: String? = null, sort: SortOption? = null)
     fun navigateUp(): Boolean
     fun setSortOption(sort: SortOption)
+    fun setThemeMode(mode: ThemeMode)
+    fun setShowHiddenFiles(enabled: Boolean)
+    fun setShowFileExtensions(enabled: Boolean)
+    fun setRecycleBinEnabled(enabled: Boolean)
 }
 
 class DefaultDataRepository(private val context: Context) : DataRepository {
     private val scanner = StorageScanner(context)
+    private val prefs = SettingsPreferences(context)
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    private val _settingsState = MutableStateFlow(prefs.getSettings())
+    override val settingsState: StateFlow<SettingsUiState> = _settingsState.asStateFlow()
 
     private val _homeScreenData = MutableStateFlow(HomeScreenData())
     override val homeScreenData: StateFlow<HomeScreenData> = _homeScreenData.asStateFlow()
@@ -57,7 +66,11 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         scope.launch {
             _directoryState.value = _directoryState.value.copy(isLoading = true)
 
-            val items = scanner.scanDirectory(targetPath, targetSort)
+            val items = scanner.scanDirectory(
+                directoryPath = targetPath,
+                sortOption = targetSort,
+                showHiddenFiles = _settingsState.value.showHiddenFiles
+            )
             val breadcrumbs = buildBreadcrumbs(targetPath)
 
             _directoryState.value = _directoryState.value.copy(
@@ -88,6 +101,27 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
 
     override fun setSortOption(sort: SortOption) {
         loadDirectory(_directoryState.value.currentPath, sort)
+    }
+
+    override fun setThemeMode(mode: ThemeMode) {
+        prefs.setThemeMode(mode)
+        _settingsState.value = prefs.getSettings()
+    }
+
+    override fun setShowHiddenFiles(enabled: Boolean) {
+        prefs.setShowHiddenFiles(enabled)
+        _settingsState.value = prefs.getSettings()
+        loadDirectory(_directoryState.value.currentPath)
+    }
+
+    override fun setShowFileExtensions(enabled: Boolean) {
+        prefs.setShowFileExtensions(enabled)
+        _settingsState.value = prefs.getSettings()
+    }
+
+    override fun setRecycleBinEnabled(enabled: Boolean) {
+        prefs.setRecycleBinEnabled(enabled)
+        _settingsState.value = prefs.getSettings()
     }
 
     private fun buildBreadcrumbs(path: String): List<BreadcrumbSegment> {

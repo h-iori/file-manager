@@ -48,3 +48,24 @@ val ChartAppsOrange = Color(0xFFFF5722)       // Fiery Deep Neon Orange
 val ChartSystemSlate = Color(0xFF94A3B8)      // Metallic Cool Steel / Titanium Slate
 val ChartAvailableEmerald = Color(0xFF10B981) // Pure Vibrant Mint / Emerald Green
 
+// Stitch Settings Design Tokens
+val SettingCardBg = Color(0xFF130E24)
+val SettingCardHover = Color(0xFF18112E)
+val SettingIconBg = Color(0xFF1D1438)
+val SettingSegmentedBg = Color(0xFF0D091A)
+val SettingSwitchTrackOff = Color(0xFF231B3E)
+val SettingBorderSubtle = Color(0x33A855F7)
+val SettingBorderDeep = Color(0xFF2E2050)
+val SettingAccentLight = Color(0xFFD8B4FE)
+val SettingAccentLilac = Color(0xFFC084FC)
+
+// Frosted Obsidian Light Theme Tokens
+val BgLight = Color(0xFFF7F5FC)
+val SurfaceLight = Color(0xFFFFFFFF)
+val SurfaceLightHigh = Color(0xFFEDE8F8)
+val SurfaceLightLow = Color(0xFFF2EEFA)
+val TextPrimaryLight = Color(0xFF160F2E)
+val TextSecondaryLight = Color(0xFF6B5E87)
+val TextMutedLight = Color(0xFF9E92BA)
+val BorderSubtleLight = Color(0x33A855F7)
+

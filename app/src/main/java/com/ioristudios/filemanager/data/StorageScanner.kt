@@ -34,17 +34,18 @@ class StorageScanner(private val context: Context) {
 
     suspend fun scanDirectory(
         directoryPath: String,
-        sortOption: SortOption
+        sortOption: SortOption,
+        showHiddenFiles: Boolean = true
     ): List<DirectoryItem> = withContext(Dispatchers.IO) {
         val dir = File(directoryPath)
         if (!dir.exists() || !dir.isDirectory) return@withContext emptyList()
 
-        val rawFiles = dir.listFiles()?.filter { !it.name.startsWith(".") } ?: emptyList()
+        val rawFiles = dir.listFiles()?.filter { showHiddenFiles || !it.name.startsWith(".") } ?: emptyList()
 
         val items = rawFiles.map { file ->
             val isDir = file.isDirectory
             val childCount = if (isDir) {
-                file.listFiles()?.filter { !it.name.startsWith(".") }?.size ?: 0
+                file.listFiles()?.filter { showHiddenFiles || !it.name.startsWith(".") }?.size ?: 0
             } else 0
 
             val sizeBytes = if (isDir) {

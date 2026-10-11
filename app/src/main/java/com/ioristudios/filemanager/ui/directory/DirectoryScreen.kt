@@ -101,6 +101,7 @@ import com.ioristudios.filemanager.theme.TextPrimary
 import com.ioristudios.filemanager.theme.TextSecondary
 import com.ioristudios.filemanager.ui.main.AppHeader
 import com.ioristudios.filemanager.ui.main.MainScreenViewModel
+import com.ioristudios.filemanager.ui.main.NavTab
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -113,6 +114,7 @@ fun DirectoryScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.directoryUiState.collectAsStateWithLifecycle()
+    val settingsState by viewModel.settingsUiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var selectedItemForDetails by remember { mutableStateOf<DirectoryItem?>(null) }
@@ -126,16 +128,7 @@ fun DirectoryScreen(
         // Shared Top Brand Header (Identical to Stitch Screen 5 & Screen 6)
         AppHeader(
             onSearchClick = { showMessage("Directory search coming soon") },
-            onMenuClick = {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                }
-                try {
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    showMessage("Settings")
-                }
-            }
+            onMenuClick = { viewModel.selectTab(NavTab.SETTINGS) }
         )
 
         // Breadcrumb Trail (Interactive drill-down navigation)
@@ -302,6 +295,7 @@ fun DirectoryScreen(
                 items(state.items, key = { it.path }) { item ->
                     DirectoryItemRow(
                         item = item,
+                        showFileExtensions = settingsState.showFileExtensions,
                         onClick = {
                             if (item.isDirectory) {
                                 viewModel.openDirectory(item.path)
@@ -408,6 +402,7 @@ fun BreadcrumbsBar(
 @Composable
 fun DirectoryItemRow(
     item: DirectoryItem,
+    showFileExtensions: Boolean = true,
     onClick: () -> Unit,
     onOpen: () -> Unit,
     onShare: () -> Unit,
@@ -539,9 +534,14 @@ fun DirectoryItemRow(
                     )
                 }
 
+                val displayName = if (!item.isDirectory && !showFileExtensions) {
+                    val dot = item.name.lastIndexOf('.')
+                    if (dot > 0) item.name.substring(0, dot) else item.name
+                } else item.name
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.name,
+                        text = displayName,
                         color = TextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,

@@ -136,6 +136,7 @@ import com.ioristudios.filemanager.theme.TextSecondary
 import com.ioristudios.filemanager.theme.ZipAmber
 import com.ioristudios.filemanager.theme.ZipAmberBg
 import com.ioristudios.filemanager.ui.directory.DirectoryScreen
+import com.ioristudios.filemanager.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
@@ -158,9 +159,13 @@ fun MainScreen(
         }
     }
 
-    // Handle back button for subfolder navigation and tab return
-    BackHandler(enabled = selectedTab == NavTab.FILES) {
-        if (!viewModel.navigateUpDirectory()) {
+    // Handle back button for subfolder navigation, files tab, and settings tab return
+    BackHandler(enabled = selectedTab != NavTab.HOME) {
+        if (selectedTab == NavTab.FILES) {
+            if (!viewModel.navigateUpDirectory()) {
+                viewModel.selectTab(NavTab.HOME)
+            }
+        } else {
             viewModel.selectTab(NavTab.HOME)
         }
     }
@@ -176,7 +181,8 @@ fun MainScreen(
                     HomeScreenContent(
                         state = homeState,
                         showMessage = showMessage,
-                        onViewAllClick = { viewModel.selectTab(NavTab.FILES) }
+                        onViewAllClick = { viewModel.selectTab(NavTab.FILES) },
+                        onSettingsClick = { viewModel.selectTab(NavTab.SETTINGS) }
                     )
                 }
                 NavTab.FILES -> {
@@ -194,10 +200,11 @@ fun MainScreen(
                     )
                 }
                 NavTab.SETTINGS -> {
-                    PlaceholderScreen(
-                        title = "Settings",
-                        subtitle = "Files preferences and storage tools coming soon",
-                        icon = Icons.Default.Settings
+                    SettingsScreen(
+                        viewModel = viewModel,
+                        showMessage = showMessage,
+                        onBackClick = { viewModel.selectTab(NavTab.HOME) },
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     )
                 }
             }
@@ -213,8 +220,8 @@ fun MainScreen(
             FloatingBottomNav(
                 selectedTab = selectedTab,
                 onTabSelect = { tab ->
-                    if (tab == NavTab.SHARE || tab == NavTab.SETTINGS) {
-                        showMessage("${tab.name.lowercase().replaceFirstChar { it.uppercase() }} screen coming soon")
+                    if (tab == NavTab.SHARE) {
+                        showMessage("Wireless share coming soon")
                     } else {
                         viewModel.selectTab(tab)
                     }
@@ -236,7 +243,8 @@ fun MainScreen(
 fun HomeScreenContent(
     state: HomeScreenData,
     showMessage: (String) -> Unit,
-    onViewAllClick: () -> Unit
+    onViewAllClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val context = LocalContext.current
     var selectedRecentFileForDetails by remember { mutableStateOf<RecentFile?>(null) }
@@ -249,16 +257,7 @@ fun HomeScreenContent(
         // App Header
         AppHeader(
             onSearchClick = { showMessage("Global file search coming soon") },
-            onMenuClick = {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                }
-                try {
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    showMessage("Settings")
-                }
-            }
+            onMenuClick = onSettingsClick
         )
 
         // Scrollable Content

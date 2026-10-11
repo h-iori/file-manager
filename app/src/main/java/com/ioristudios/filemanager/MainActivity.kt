@@ -16,10 +16,12 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ioristudios.filemanager.data.DefaultDataRepository
 import com.ioristudios.filemanager.theme.FilesTheme
 import com.ioristudios.filemanager.ui.main.MainScreen
@@ -60,7 +62,8 @@ class MainActivity : ComponentActivity() {
         requestHighestStoragePermission()
 
         setContent {
-            FilesTheme {
+            val settingsState by viewModel.settingsUiState.collectAsStateWithLifecycle()
+            FilesTheme(themeMode = settingsState.themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
