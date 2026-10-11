@@ -82,22 +82,7 @@ import com.ioristudios.filemanager.data.DirectoryItem
 import com.ioristudios.filemanager.data.DirectoryScreenState
 import com.ioristudios.filemanager.data.DirectoryVisualType
 import com.ioristudios.filemanager.data.SortOption
-import com.ioristudios.filemanager.theme.BgDeepDark
-import com.ioristudios.filemanager.theme.BorderSubtle
-import com.ioristudios.filemanager.theme.CardBorderPurple
-import com.ioristudios.filemanager.theme.ElectricCoral
-import com.ioristudios.filemanager.theme.ElectricCyan
-import com.ioristudios.filemanager.theme.ElectricLavender
-import com.ioristudios.filemanager.theme.ElectricMagenta
-import com.ioristudios.filemanager.theme.ElectricPurple
-import com.ioristudios.filemanager.theme.ElectricTeal
-import com.ioristudios.filemanager.theme.OutfitFontFamily
-import com.ioristudios.filemanager.theme.PurpleContainer
-import com.ioristudios.filemanager.theme.SurfaceContainer
-import com.ioristudios.filemanager.theme.SurfaceContainerHigh
-import com.ioristudios.filemanager.theme.OutfitFontFamily
-import com.ioristudios.filemanager.theme.TextMuted
-import com.ioristudios.filemanager.theme.TextPrimary
+import com.ioristudios.filemanager.theme.*
 import com.ioristudios.filemanager.theme.TextSecondary
 import com.ioristudios.filemanager.ui.main.AppHeader
 import com.ioristudios.filemanager.ui.main.MainScreenViewModel
@@ -123,7 +108,7 @@ fun DirectoryScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BgDeepDark)
+            .background(FilesTheme.colors.bg)
     ) {
         // Shared Top Brand Header (Identical to Stitch Screen 5 & Screen 6)
         AppHeader(
@@ -155,14 +140,14 @@ fun DirectoryScreen(
                 Text(
                     text = "Directories",
                     fontFamily = OutfitFontFamily,
-                    color = TextPrimary,
+                    color = FilesTheme.colors.textPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "· ${state.items.size} items",
                     fontFamily = OutfitFontFamily,
-                    color = TextMuted,
+                    color = FilesTheme.colors.textMuted,
                     fontSize = 12.sp
                 )
             }
@@ -172,8 +157,8 @@ fun DirectoryScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1A1233).copy(alpha = 0.7f))
-                        .border(1.dp, BorderSubtle.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .background(FilesTheme.colors.surface)
+                        .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                         .clickable { sortMenuExpanded = true }
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     contentAlignment = Alignment.Center
@@ -185,19 +170,19 @@ fun DirectoryScreen(
                         Icon(
                             imageVector = Icons.Default.SortByAlpha,
                             contentDescription = "Sort",
-                            tint = ElectricPurple,
+                            tint = FilesTheme.colors.primaryAccent,
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = getShortSortLabel(state.sortOption),
-                            color = ElectricPurple,
+                            color = FilesTheme.colors.primaryAccent,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
                         Icon(
                             imageVector = Icons.Default.ExpandMore,
                             contentDescription = null,
-                            tint = TextMuted,
+                            tint = FilesTheme.colors.textMuted,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -206,7 +191,7 @@ fun DirectoryScreen(
                 DropdownMenu(
                     expanded = sortMenuExpanded,
                     onDismissRequest = { sortMenuExpanded = false },
-                    modifier = Modifier.background(SurfaceContainerHigh)
+                    modifier = Modifier.background(FilesTheme.colors.dialogBg)
                 ) {
                     SortOption.values().forEach { option ->
                         DropdownMenuItem(
@@ -219,7 +204,7 @@ fun DirectoryScreen(
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
-                                            tint = ElectricPurple,
+                                            tint = FilesTheme.colors.primaryAccent,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     } else {
@@ -227,7 +212,7 @@ fun DirectoryScreen(
                                     }
                                     Text(
                                         text = option.label,
-                                        color = if (state.sortOption == option) ElectricPurple else TextPrimary,
+                                        color = if (state.sortOption == option) FilesTheme.colors.primaryAccent else FilesTheme.colors.textPrimary,
                                         fontSize = 13.sp
                                     )
                                 }
@@ -355,7 +340,7 @@ fun BreadcrumbsBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = ElectricPurple,
+                    tint = FilesTheme.colors.primaryAccent,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -374,14 +359,14 @@ fun BreadcrumbsBar(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .background(
-                            if (isLast) Color(0xFF20173D) else Color.Transparent
+                            if (isLast) (if (FilesTheme.isDark) Color(0xFF20173D) else Color(0xFFEDE4FF)) else Color.Transparent
                         )
                         .clickable(enabled = !isLast) { onBreadcrumbClick(segment.fullPath) }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = segment.title,
-                        color = if (isLast) ElectricPurple else TextSecondary,
+                        color = if (isLast) FilesTheme.colors.primaryAccent else FilesTheme.colors.textSecondary,
                         fontSize = 12.sp,
                         fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal
                     )
@@ -390,7 +375,7 @@ fun BreadcrumbsBar(
                 if (!isLast) {
                     Text(
                         text = "/",
-                        color = TextMuted,
+                        color = FilesTheme.colors.textMuted,
                         fontSize = 12.sp
                     )
                 }
@@ -412,98 +397,224 @@ fun DirectoryItemRow(
     var menuExpanded by remember { mutableStateOf(false) }
 
     val (icon, iconTint, iconBg, iconBorder) = when (item.visualType) {
-        DirectoryVisualType.CAMERA -> ItemVisuals(
-            Icons.Default.PhotoCameraBack,
-            ElectricPurple,
-            Color(0xFF9333EA).copy(alpha = 0.2f),
-            Color(0xFFA855F7).copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.DOWNLOAD -> ItemVisuals(
-            Icons.Outlined.Download,
-            ElectricCoral,
-            Color(0xFFE11D48).copy(alpha = 0.2f),
-            ElectricCoral.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.DOCUMENT -> ItemVisuals(
-            Icons.Default.Description,
-            ElectricMagenta,
-            Color(0xFFC026D3).copy(alpha = 0.2f),
-            Color(0xFFD946EF).copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.MOVIE -> ItemVisuals(
-            Icons.Default.Movie,
-            ElectricCyan,
-            Color(0xFF0284C7).copy(alpha = 0.2f),
-            ElectricCyan.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.HEADPHONES -> ItemVisuals(
-            Icons.Default.Headphones,
-            ElectricTeal,
-            Color(0xFF0F766E).copy(alpha = 0.25f),
-            ElectricTeal.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.IMAGE -> ItemVisuals(
-            Icons.Default.Image,
-            ElectricPurple,
-            Color(0xFF20173D),
-            CardBorderPurple.copy(alpha = 0.5f)
-        )
-        DirectoryVisualType.SEND -> ItemVisuals(
-            Icons.AutoMirrored.Filled.Send,
-            ElectricCyan,
-            Color(0xFF0284C7).copy(alpha = 0.2f),
-            ElectricCyan.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.MIC -> ItemVisuals(
-            Icons.Default.Mic,
-            ElectricMagenta,
-            Color(0xFFC026D3).copy(alpha = 0.2f),
-            ElectricMagenta.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.BACKUP -> ItemVisuals(
-            Icons.Default.Backup,
-            ElectricLavender,
-            Color(0xFF4F46E5).copy(alpha = 0.2f),
-            ElectricLavender.copy(alpha = 0.3f)
-        )
-        DirectoryVisualType.PODCASTS -> ItemVisuals(
-            Icons.Default.Podcasts,
-            ElectricPurple,
-            Color(0xFF20173D),
-            CardBorderPurple.copy(alpha = 0.5f)
-        )
-        DirectoryVisualType.NOTIFICATIONS -> ItemVisuals(
-            Icons.Default.NotificationsActive,
-            TextMuted,
-            Color(0xFF20173D),
-            CardBorderPurple.copy(alpha = 0.5f)
-        )
-        DirectoryVisualType.ANDROID -> ItemVisuals(
-            Icons.Default.Folder,
-            ElectricPurple,
-            Color(0xFF20173D),
-            CardBorderPurple.copy(alpha = 0.5f)
-        )
-        DirectoryVisualType.FOLDER -> ItemVisuals(
-            Icons.Default.Folder,
-            ElectricPurple,
-            Color(0xFF20173D),
-            CardBorderPurple.copy(alpha = 0.5f)
-        )
-        DirectoryVisualType.FILE_GENERIC -> ItemVisuals(
-            Icons.AutoMirrored.Filled.InsertDriveFile,
-            TextSecondary,
-            Color(0xFF20173D),
-            BorderSubtle.copy(alpha = 0.5f)
-        )
+        DirectoryVisualType.CAMERA -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.PhotoCameraBack,
+                ElectricPurple,
+                Color(0xFF9333EA).copy(alpha = 0.2f),
+                Color(0xFFA855F7).copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.PhotoCameraBack,
+                PhotosCyanLightTint,
+                PhotosCyanLightBg,
+                PhotosCyanLightBorder
+            )
+        }
+        DirectoryVisualType.DOWNLOAD -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Outlined.Download,
+                ElectricCoral,
+                Color(0xFFE11D48).copy(alpha = 0.2f),
+                ElectricCoral.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Outlined.Download,
+                FolderAmberLightTint,
+                FolderAmberLightBg,
+                FolderAmberLightBorder
+            )
+        }
+        DirectoryVisualType.DOCUMENT -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Description,
+                ElectricMagenta,
+                Color(0xFFC026D3).copy(alpha = 0.2f),
+                Color(0xFFD946EF).copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Description,
+                DocsRoseLightTint,
+                DocsRoseLightBg,
+                DocsRoseLightBorder
+            )
+        }
+        DirectoryVisualType.MOVIE -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Movie,
+                ElectricCyan,
+                Color(0xFF0284C7).copy(alpha = 0.2f),
+                ElectricCyan.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Movie,
+                VideosVioletLightTint,
+                VideosVioletLightBg,
+                VideosVioletLightBorder
+            )
+        }
+        DirectoryVisualType.HEADPHONES -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Headphones,
+                ElectricTeal,
+                Color(0xFF0F766E).copy(alpha = 0.25f),
+                ElectricTeal.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Headphones,
+                AudioEmeraldLightTint,
+                AudioEmeraldLightBg,
+                AudioEmeraldLightBorder
+            )
+        }
+        DirectoryVisualType.IMAGE -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Image,
+                ElectricPurple,
+                Color(0xFF20173D),
+                CardBorderPurple.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Image,
+                PhotosCyanLightTint,
+                PhotosCyanLightBg,
+                PhotosCyanLightBorder
+            )
+        }
+        DirectoryVisualType.SEND -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.AutoMirrored.Filled.Send,
+                ElectricCyan,
+                Color(0xFF0284C7).copy(alpha = 0.2f),
+                ElectricCyan.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.AutoMirrored.Filled.Send,
+                AccentPrimaryLight,
+                Color(0xFFEEF2FF),
+                Color(0xFFC7D2FE)
+            )
+        }
+        DirectoryVisualType.MIC -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Mic,
+                ElectricMagenta,
+                Color(0xFFC026D3).copy(alpha = 0.2f),
+                ElectricMagenta.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Mic,
+                AudioEmeraldLightTint,
+                AudioEmeraldLightBg,
+                AudioEmeraldLightBorder
+            )
+        }
+        DirectoryVisualType.BACKUP -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Backup,
+                ElectricLavender,
+                Color(0xFF4F46E5).copy(alpha = 0.2f),
+                ElectricLavender.copy(alpha = 0.3f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Backup,
+                AccentPrimaryLight,
+                Color(0xFFEEF2FF),
+                Color(0xFFC7D2FE)
+            )
+        }
+        DirectoryVisualType.PODCASTS -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Podcasts,
+                ElectricPurple,
+                Color(0xFF20173D),
+                CardBorderPurple.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Podcasts,
+                AudioEmeraldLightTint,
+                AudioEmeraldLightBg,
+                AudioEmeraldLightBorder
+            )
+        }
+        DirectoryVisualType.NOTIFICATIONS -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.NotificationsActive,
+                TextMuted,
+                Color(0xFF20173D),
+                CardBorderPurple.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.NotificationsActive,
+                AccentPrimaryLight,
+                Color(0xFFEEF2FF),
+                Color(0xFFC7D2FE)
+            )
+        }
+        DirectoryVisualType.ANDROID -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Folder,
+                ElectricPurple,
+                Color(0xFF20173D),
+                CardBorderPurple.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Folder,
+                FolderAmberLightTint,
+                FolderAmberLightBg,
+                FolderAmberLightBorder
+            )
+        }
+        DirectoryVisualType.FOLDER -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.Default.Folder,
+                ElectricPurple,
+                Color(0xFF20173D),
+                CardBorderPurple.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.Default.Folder,
+                FolderAmberLightTint,
+                FolderAmberLightBg,
+                FolderAmberLightBorder
+            )
+        }
+        DirectoryVisualType.FILE_GENERIC -> if (FilesTheme.isDark) {
+            ItemVisuals(
+                Icons.AutoMirrored.Filled.InsertDriveFile,
+                TextSecondary,
+                Color(0xFF20173D),
+                BorderSubtle.copy(alpha = 0.5f)
+            )
+        } else {
+            ItemVisuals(
+                Icons.AutoMirrored.Filled.InsertDriveFile,
+                SystemSlateLightTint,
+                SystemSlateLightBg,
+                SystemSlateLightBorder
+            )
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF140E26))
-            .border(1.dp, BorderSubtle.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+            .background(FilesTheme.colors.surface)
+            .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
@@ -542,7 +653,7 @@ fun DirectoryItemRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName,
-                        color = TextPrimary,
+                        color = FilesTheme.colors.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -551,7 +662,7 @@ fun DirectoryItemRow(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = item.fileCountLabel,
-                        color = TextSecondary,
+                        color = FilesTheme.colors.textSecondary,
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -568,7 +679,7 @@ fun DirectoryItemRow(
                     Icon(
                         imageVector = Icons.Outlined.MoreVert,
                         contentDescription = "Options",
-                        tint = TextMuted,
+                        tint = FilesTheme.colors.textMuted,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -604,7 +715,7 @@ fun FileDetailsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF140E26),
+        containerColor = FilesTheme.colors.dialogBg,
         shape = RoundedCornerShape(24.dp),
         title = {
             Row(
@@ -616,19 +727,19 @@ fun FileDetailsDialog(
                         .size(36.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF9333EA).copy(alpha = 0.25f))
-                        .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
+                        .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (item.isDirectory) Icons.Default.Folder else Icons.Default.Info,
                         contentDescription = null,
-                        tint = ElectricPurple,
+                        tint = FilesTheme.colors.primaryAccent,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Text(
                     text = if (item.isDirectory) "Directory Details" else "File Details",
-                    color = TextPrimary,
+                    color = FilesTheme.colors.textPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -659,7 +770,7 @@ fun FileDetailsDialog(
                     .background(
                         Brush.horizontalGradient(listOf(Color(0xFF9333EA), PurpleContainer))
                     )
-                    .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                    .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                     .clickable(onClick = onDismiss)
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
@@ -680,14 +791,14 @@ fun DetailRow(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
-            color = TextMuted,
+            color = FilesTheme.colors.textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = value,
-            color = TextPrimary,
+            color = FilesTheme.colors.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Normal,
             lineHeight = 17.sp

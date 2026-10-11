@@ -16,12 +16,43 @@ val OrbitronFontFamily = FontFamily(
     Font(R.font.orbitron, FontWeight.ExtraBold)
 )
 
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
 val OutfitFontFamily = FontFamily(
-    Font(R.font.outfit, FontWeight.Normal),
-    Font(R.font.outfit, FontWeight.Medium),
-    Font(R.font.outfit, FontWeight.SemiBold),
-    Font(R.font.outfit, FontWeight.Bold),
-    Font(R.font.outfit, FontWeight.ExtraBold)
+    Font(
+        R.font.outfit,
+        FontWeight.Normal,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+            androidx.compose.ui.text.font.FontVariation.weight(400)
+        )
+    ),
+    Font(
+        R.font.outfit,
+        FontWeight.Medium,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+            androidx.compose.ui.text.font.FontVariation.weight(550)
+        )
+    ),
+    Font(
+        R.font.outfit,
+        FontWeight.SemiBold,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+            androidx.compose.ui.text.font.FontVariation.weight(650)
+        )
+    ),
+    Font(
+        R.font.outfit,
+        FontWeight.Bold,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+            androidx.compose.ui.text.font.FontVariation.weight(750)
+        )
+    ),
+    Font(
+        R.font.outfit,
+        FontWeight.ExtraBold,
+        variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+            androidx.compose.ui.text.font.FontVariation.weight(850)
+        )
+    )
 )
 
 // Professional industry-standard typography using Outfit

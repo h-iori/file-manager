@@ -66,6 +66,7 @@ import com.ioristudios.filemanager.theme.ElectricLavender
 import com.ioristudios.filemanager.theme.ElectricMagenta
 import com.ioristudios.filemanager.theme.ElectricPurple
 import com.ioristudios.filemanager.theme.ElectricTeal
+import com.ioristudios.filemanager.theme.FilesTheme
 import com.ioristudios.filemanager.theme.OutfitFontFamily
 import com.ioristudios.filemanager.theme.PurpleContainer
 import com.ioristudios.filemanager.theme.TextMuted
@@ -167,6 +168,8 @@ fun StorageDonutChart(
         calculateDonutAngles(slices, totalDegrees = 360f, minDegrees = 5.0f)
     }
 
+    val glassTrackColor = FilesTheme.colors.glassTrackColor
+
     Box(
         modifier = modifier.size(size),
         contentAlignment = Alignment.Center
@@ -177,9 +180,9 @@ fun StorageDonutChart(
             val radius = (canvasSize - strokePx) / 2f
             val centerOffset = androidx.compose.ui.geometry.Offset(this.size.width / 2f, this.size.height / 2f)
 
-            // Deep background circular track
+            // Background circular track (dynamic track for dark & frosted light)
             drawCircle(
-                color = Color(0xFF1B1033),
+                color = glassTrackColor,
                 radius = radius,
                 center = centerOffset,
                 style = Stroke(width = strokePx)
@@ -214,7 +217,7 @@ fun StorageDonutChart(
         ) {
             Text(
                 text = "USED",
-                color = ElectricLavender,
+                color = FilesTheme.colors.primaryAccent,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = OutfitFontFamily,
@@ -222,7 +225,7 @@ fun StorageDonutChart(
             )
             Text(
                 text = storage.formattedUsed,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = OutfitFontFamily,
@@ -230,7 +233,7 @@ fun StorageDonutChart(
             )
             Text(
                 text = "${storage.usedPercent.toInt()}%",
-                color = ChartPhotosCyan,
+                color = if (FilesTheme.isDark) ChartPhotosCyan else Color(0xFF0284C7),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = OutfitFontFamily
@@ -253,15 +256,15 @@ fun GlassIconButton(
         modifier = modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(Color(0x14FFFFFF))
-            .border(1.dp, Color(0x1EFFFFFF), CircleShape)
+            .background(if (FilesTheme.isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
+            .border(1.dp, if (FilesTheme.isDark) Color(0x1EFFFFFF) else Color(0xFFE2E8F0), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color(0xFFE2E8F0),
+            tint = FilesTheme.colors.textPrimary,
             modifier = Modifier.size(19.dp)
         )
     }
@@ -285,15 +288,10 @@ fun GlassContextMenu(
         modifier = Modifier
             .width(175.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF160F2C))
+            .background(FilesTheme.colors.dialogBg)
             .border(
-                1.2.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        CardBorderPurple.copy(alpha = 0.9f),
-                        PurpleContainer.copy(alpha = 0.4f)
-                    )
-                ),
+                1.dp,
+                FilesTheme.colors.cardBorder,
                 RoundedCornerShape(16.dp)
             )
             .padding(vertical = 4.dp)
@@ -301,8 +299,8 @@ fun GlassContextMenu(
         // Open
         GlassContextMenuItem(
             icon = Icons.Default.OpenInNew,
-            iconTint = ElectricCyan,
-            iconBg = Color(0xFF0284C7).copy(alpha = 0.22f),
+            iconTint = if (FilesTheme.isDark) ElectricCyan else Color(0xFF0284C7),
+            iconBg = if (FilesTheme.isDark) Color(0xFF0284C7).copy(alpha = 0.22f) else Color(0xFFE0F2FE),
             label = "Open",
             onClick = {
                 onDismissRequest()
@@ -313,8 +311,8 @@ fun GlassContextMenu(
         // Details
         GlassContextMenuItem(
             icon = Icons.Default.Info,
-            iconTint = ElectricPurple,
-            iconBg = Color(0xFF9333EA).copy(alpha = 0.22f),
+            iconTint = FilesTheme.colors.primaryAccent,
+            iconBg = if (FilesTheme.isDark) Color(0xFF9333EA).copy(alpha = 0.22f) else Color(0xFFEEF2FF),
             label = "Details",
             onClick = {
                 onDismissRequest()
@@ -325,8 +323,8 @@ fun GlassContextMenu(
         // Share
         GlassContextMenuItem(
             icon = Icons.Default.Share,
-            iconTint = ElectricTeal,
-            iconBg = Color(0xFF0F766E).copy(alpha = 0.25f),
+            iconTint = if (FilesTheme.isDark) ElectricTeal else Color(0xFF059669),
+            iconBg = if (FilesTheme.isDark) Color(0xFF0F766E).copy(alpha = 0.25f) else Color(0xFFD1FAE5),
             label = "Share",
             onClick = {
                 onDismissRequest()
@@ -338,14 +336,14 @@ fun GlassContextMenu(
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             thickness = 0.8.dp,
-            color = Color(0x22FFFFFF)
+            color = if (FilesTheme.isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0)
         )
 
         // Delete
         GlassContextMenuItem(
             icon = Icons.Default.Delete,
             iconTint = Color(0xFFFF5252),
-            iconBg = Color(0xFFB71C1C).copy(alpha = 0.22f),
+            iconBg = if (FilesTheme.isDark) Color(0xFFB71C1C).copy(alpha = 0.22f) else Color(0xFFFFE4E6),
             label = "Delete",
             isDanger = true,
             onClick = {
@@ -388,7 +386,7 @@ fun GlassContextMenuItem(
                 }
                 Text(
                     text = label,
-                    color = if (isDanger) Color(0xFFFF5252) else TextPrimary,
+                    color = if (isDanger) Color(0xFFFF5252) else FilesTheme.colors.textPrimary,
                     fontSize = 13.5.sp,
                     fontWeight = if (isDanger) FontWeight.Bold else FontWeight.Medium
                 )
@@ -419,7 +417,7 @@ fun FileDetailsModalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF140E26),
+        containerColor = FilesTheme.colors.dialogBg,
         shape = RoundedCornerShape(24.dp),
         title = {
             Row(
@@ -431,19 +429,19 @@ fun FileDetailsModalDialog(
                         .size(36.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF9333EA).copy(alpha = 0.25f))
-                        .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
+                        .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isDirectory) Icons.Default.Folder else Icons.Default.Info,
                         contentDescription = null,
-                        tint = ElectricPurple,
+                        tint = FilesTheme.colors.primaryAccent,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Text(
                     text = if (isDirectory) "Directory Details" else "File Details",
-                    color = TextPrimary,
+                    color = FilesTheme.colors.textPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -474,7 +472,7 @@ fun FileDetailsModalDialog(
                     .background(
                         Brush.horizontalGradient(listOf(Color(0xFF9333EA), PurpleContainer))
                     )
-                    .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                    .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                     .clickable(onClick = onDismiss)
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
@@ -495,14 +493,14 @@ fun ModalDetailRow(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
-            color = TextMuted,
+            color = FilesTheme.colors.textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = value,
-            color = TextPrimary,
+            color = FilesTheme.colors.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Normal,
             lineHeight = 17.sp

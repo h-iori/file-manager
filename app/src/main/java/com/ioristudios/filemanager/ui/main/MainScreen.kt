@@ -107,34 +107,7 @@ import com.ioristudios.filemanager.data.StorageOverview
 import com.ioristudios.filemanager.theme.BgDeepDark
 import com.ioristudios.filemanager.theme.BorderSubtle
 import com.ioristudios.filemanager.theme.CardBorderPurple
-import com.ioristudios.filemanager.theme.CardGradientEnd
-import com.ioristudios.filemanager.theme.CardGradientStart
-import com.ioristudios.filemanager.theme.ChartPhotosCyan
-import com.ioristudios.filemanager.theme.ChartVideosPurple
-import com.ioristudios.filemanager.theme.ChartAudioLime
-import com.ioristudios.filemanager.theme.ChartDocsPink
-import com.ioristudios.filemanager.theme.ChartDownloadsAmber
-import com.ioristudios.filemanager.theme.ChartAppsOrange
-import com.ioristudios.filemanager.theme.ChartSystemSlate
-import com.ioristudios.filemanager.theme.ChartAvailableEmerald
-import com.ioristudios.filemanager.theme.ElectricCoral
-import com.ioristudios.filemanager.theme.ElectricCyan
-import com.ioristudios.filemanager.theme.ElectricLavender
-import com.ioristudios.filemanager.theme.ElectricMagenta
-import com.ioristudios.filemanager.theme.ElectricPurple
-import com.ioristudios.filemanager.theme.ElectricTeal
-import com.ioristudios.filemanager.theme.ExcelGreen
-import com.ioristudios.filemanager.theme.ExcelGreenBg
-import com.ioristudios.filemanager.theme.OrbitronFontFamily
-import com.ioristudios.filemanager.theme.OutfitFontFamily
-import com.ioristudios.filemanager.theme.PdfRed
-import com.ioristudios.filemanager.theme.PdfRedBg
-import com.ioristudios.filemanager.theme.PurpleContainer
-import com.ioristudios.filemanager.theme.TextMuted
-import com.ioristudios.filemanager.theme.TextPrimary
-import com.ioristudios.filemanager.theme.TextSecondary
-import com.ioristudios.filemanager.theme.ZipAmber
-import com.ioristudios.filemanager.theme.ZipAmberBg
+import com.ioristudios.filemanager.theme.*
 import com.ioristudios.filemanager.ui.directory.DirectoryScreen
 import com.ioristudios.filemanager.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
@@ -173,7 +146,7 @@ fun MainScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgDeepDark)
+            .background(FilesTheme.colors.bg)
     ) {
         Crossfade(targetState = selectedTab, label = "TabCrossfade") { currentTab ->
             when (currentTab) {
@@ -358,28 +331,28 @@ fun PlaceholderScreen(
             modifier = Modifier
                 .size(64.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF20173D))
-                .border(1.dp, CardBorderPurple, CircleShape),
+                .background(FilesTheme.colors.chipBg)
+                .border(1.dp, FilesTheme.colors.chipBorder, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = ElectricPurple,
+                tint = FilesTheme.colors.primaryAccent,
                 modifier = Modifier.size(32.dp)
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = title,
-            color = TextPrimary,
+            color = FilesTheme.colors.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = subtitle,
-            color = TextSecondary,
+            color = FilesTheme.colors.textSecondary,
             fontSize = 13.sp,
             lineHeight = 18.sp
         )
@@ -420,14 +393,12 @@ fun AppHeader(
                     .clip(RoundedCornerShape(13.dp))
                     .background(
                         Brush.radialGradient(
-                            listOf(Color(0xFF351C66), Color(0xFF130A24))
+                            listOf(FilesTheme.colors.headerIconBgStart, FilesTheme.colors.headerIconBgEnd)
                         )
                     )
                     .border(
                         1.2.dp,
-                        Brush.verticalGradient(
-                            listOf(Color(0x80C084FC), Color(0x228B5CF6))
-                        ),
+                        FilesTheme.colors.headerIconBorder,
                         RoundedCornerShape(13.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -446,55 +417,57 @@ fun AppHeader(
             ) {
                 // "Files" with 3D Purple Extrusion and Neon Glow matching AnyDoc style
                 Box {
-                    // Layer 1: Diffuse Neon Purple Aura Glow
+                    // Layer 1: Diffuse Neon Aura Glow (Dark only)
+                    if (FilesTheme.isDark) {
+                        Text(
+                            text = "Files",
+                            fontFamily = OrbitronFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            color = Color(0xCCE9D5FF),
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = Color(0xFFA855F7),
+                                    offset = Offset(0f, 0f),
+                                    blurRadius = 20f
+                                )
+                            ),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    // Layer 2: 3D Extrusion Drop Layer (Offset Down-Right)
                     Text(
                         text = "Files",
+                        modifier = Modifier.offset(x = 1.5.dp, y = 1.8.dp),
                         fontFamily = OrbitronFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp,
-                        color = Color(0xCCE9D5FF),
-                        style = TextStyle(
-                            shadow = Shadow(
-                                color = Color(0xFFA855F7),
-                                offset = Offset(0f, 0f),
-                                blurRadius = 20f
-                            )
-                        ),
+                        color = if (FilesTheme.isDark) Color(0xFF7E22CE) else Color(0xFFCBD5E1),
                         letterSpacing = 0.5.sp
                     )
 
-                    // Layer 2: 3D Purple Extrusion Drop Layer (Offset Down-Right)
-                    Text(
-                        text = "Files",
-                        modifier = Modifier.offset(x = 1.8.dp, y = 2.2.dp),
-                        fontFamily = OrbitronFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp,
-                        color = Color(0xFF7E22CE),
-                        letterSpacing = 0.5.sp
-                    )
-
-                    // Layer 3: Crisp Titanium White Surface
+                    // Layer 3: Crisp Surface
                     Text(
                         text = "Files",
                         fontFamily = OrbitronFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp,
-                        color = Color.White,
+                        color = if (FilesTheme.isDark) Color.White else TextPrimaryLight,
                         letterSpacing = 0.5.sp
                     )
                 }
 
-                // Subtitle: "by IORI STUDIOS" in Orbitron Lavender matching AnyDoc style
+                // Subtitle: "by IORI STUDIOS"
                 Text(
                     text = "by IORI STUDIOS",
                     fontFamily = OrbitronFontFamily,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 10.5.sp,
-                    color = Color(0xFFD8B4FE),
+                    color = if (FilesTheme.isDark) Color(0xFFD8B4FE) else TextSecondaryLight,
                     style = TextStyle(
                         shadow = Shadow(
-                            color = Color(0x80A855F7),
+                            color = if (FilesTheme.isDark) Color(0x80A855F7) else Color.Transparent,
                             blurRadius = 6f
                         )
                     ),
@@ -532,10 +505,10 @@ fun StorageHeroCard(
             .clip(RoundedCornerShape(24.dp))
             .background(
                 Brush.verticalGradient(
-                    listOf(CardGradientStart, CardGradientEnd)
+                    listOf(FilesTheme.colors.cardBgStart, FilesTheme.colors.cardBgEnd)
                 )
             )
-            .border(1.dp, CardBorderPurple.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+            .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
             .clickable(onClick = onCardClick)
             .padding(18.dp)
     ) {
@@ -553,13 +526,13 @@ fun StorageHeroCard(
                     Icon(
                         imageVector = Icons.Default.Storage,
                         contentDescription = "Storage",
-                        tint = ElectricPurple,
+                        tint = FilesTheme.colors.primaryAccent,
                         modifier = Modifier.size(19.dp)
                     )
                     Text(
                         text = "Internal storage",
                         fontFamily = OutfitFontFamily,
-                        color = TextPrimary,
+                        color = FilesTheme.colors.textPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -568,14 +541,14 @@ fun StorageHeroCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF221644).copy(alpha = 0.8f))
-                        .border(1.dp, BorderSubtle.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .background(FilesTheme.colors.chipBg)
+                        .border(1.dp, FilesTheme.colors.chipBorder, RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = "NVMe 4.0",
                         fontFamily = OutfitFontFamily,
-                        color = TextSecondary,
+                        color = FilesTheme.colors.textSecondary,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -586,7 +559,7 @@ fun StorageHeroCard(
             Text(
                 text = "Your device storage at a glance",
                 fontFamily = OutfitFontFamily,
-                color = TextSecondary,
+                color = FilesTheme.colors.textSecondary,
                 fontSize = 12.sp
             )
 
@@ -626,7 +599,7 @@ fun StorageHeroCard(
 
             // Bottom Status Summary
             HorizontalDivider(
-                color = Color(0x18FFFFFF),
+                color = if (FilesTheme.isDark) Color(0x18FFFFFF) else Color(0x18000000),
                 thickness = 0.8.dp
             )
 
@@ -650,7 +623,7 @@ fun StorageHeroCard(
                     Text(
                         text = "${storage.formattedFree} available",
                         fontFamily = OutfitFontFamily,
-                        color = TextPrimary,
+                        color = FilesTheme.colors.textPrimary,
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -659,7 +632,7 @@ fun StorageHeroCard(
                 Text(
                     text = "${storage.formattedTotal} total",
                     fontFamily = OutfitFontFamily,
-                    color = TextMuted,
+                    color = FilesTheme.colors.textMuted,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Normal
                 )
@@ -691,7 +664,7 @@ fun CategoryMetricRow(
             )
             Text(
                 text = label,
-                color = TextSecondary,
+                color = FilesTheme.colors.textSecondary,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = OutfitFontFamily
@@ -699,7 +672,7 @@ fun CategoryMetricRow(
         }
         Text(
             text = value,
-            color = TextPrimary,
+            color = FilesTheme.colors.textPrimary,
             fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = OutfitFontFamily
@@ -716,8 +689,7 @@ fun StorageBreakdownSection(
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
+    ) {        Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -725,7 +697,7 @@ fun StorageBreakdownSection(
             Text(
                 text = "Storage breakdown",
                 fontFamily = OutfitFontFamily,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -737,14 +709,14 @@ fun StorageBreakdownSection(
                 Text(
                     text = "View all",
                     fontFamily = OutfitFontFamily,
-                    color = ElectricPurple,
+                    color = FilesTheme.colors.primaryAccent,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
-                    tint = ElectricPurple,
+                    tint = FilesTheme.colors.primaryAccent,
                     modifier = Modifier.size(15.dp)
                 )
             }
@@ -778,65 +750,135 @@ fun CategoryCard(
     onClick: () -> Unit
 ) {
     val (icon, iconTint, iconBg, gradStart, gradEnd) = when (item.category) {
-        FileCategory.IMAGE -> CategoryVisuals(
-            Icons.Default.PhotoLibrary,
-            ChartPhotosCyan,
-            Color(0xFF00E5FF).copy(alpha = 0.2f),
-            Color(0xFF00E5FF),
-            Color(0xFF0284C7)
-        )
-        FileCategory.VIDEO -> CategoryVisuals(
-            Icons.Default.Movie,
-            ChartVideosPurple,
-            Color(0xFF8B5CF6).copy(alpha = 0.2f),
-            Color(0xFF8B5CF6),
-            Color(0xFF6D28D9)
-        )
-        FileCategory.DOCUMENT -> CategoryVisuals(
-            Icons.Default.Description,
-            ChartDocsPink,
-            Color(0xFFF43F5E).copy(alpha = 0.2f),
-            Color(0xFFF43F5E),
-            Color(0xFFBE123C)
-        )
-        FileCategory.AUDIO -> CategoryVisuals(
-            Icons.Default.Audiotrack,
-            ChartAudioLime,
-            Color(0xFFA3E635).copy(alpha = 0.2f),
-            Color(0xFFA3E635),
-            Color(0xFF65A30D)
-        )
-        FileCategory.ARCHIVE -> CategoryVisuals(
-            Icons.Outlined.Download,
-            ChartDownloadsAmber,
-            Color(0xFFF59E0B).copy(alpha = 0.2f),
-            Color(0xFFF59E0B),
-            Color(0xFFB45309)
-        )
-        else -> if (item.title.equals("System", ignoreCase = true)) {
+        FileCategory.IMAGE -> if (FilesTheme.isDark) {
             CategoryVisuals(
-                Icons.Default.Settings,
-                ChartSystemSlate,
-                Color(0xFF94A3B8).copy(alpha = 0.2f),
-                Color(0xFF94A3B8),
-                Color(0xFF475569)
+                Icons.Default.PhotoLibrary,
+                ChartPhotosCyan,
+                Color(0xFF00E5FF).copy(alpha = 0.2f),
+                Color(0xFF00E5FF),
+                Color(0xFF0284C7)
             )
         } else {
             CategoryVisuals(
-                Icons.Default.Apps,
-                ChartAppsOrange,
-                Color(0xFFFF5722).copy(alpha = 0.2f),
-                Color(0xFFFF5722),
-                Color(0xFFC2410C)
+                Icons.Default.PhotoLibrary,
+                PhotosCyanLightTint,
+                PhotosCyanLightBg,
+                Color(0xFF0284C7),
+                Color(0xFF0369A1)
             )
+        }
+        FileCategory.VIDEO -> if (FilesTheme.isDark) {
+            CategoryVisuals(
+                Icons.Default.Movie,
+                ChartVideosPurple,
+                Color(0xFF8B5CF6).copy(alpha = 0.2f),
+                Color(0xFF8B5CF6),
+                Color(0xFF6D28D9)
+            )
+        } else {
+            CategoryVisuals(
+                Icons.Default.Movie,
+                VideosVioletLightTint,
+                VideosVioletLightBg,
+                Color(0xFF7C3AED),
+                Color(0xFF6D28D9)
+            )
+        }
+        FileCategory.DOCUMENT -> if (FilesTheme.isDark) {
+            CategoryVisuals(
+                Icons.Default.Description,
+                ChartDocsPink,
+                Color(0xFFF43F5E).copy(alpha = 0.2f),
+                Color(0xFFF43F5E),
+                Color(0xFFBE123C)
+            )
+        } else {
+            CategoryVisuals(
+                Icons.Default.Description,
+                DocsRoseLightTint,
+                DocsRoseLightBg,
+                Color(0xFFE11D48),
+                Color(0xFFBE123C)
+            )
+        }
+        FileCategory.AUDIO -> if (FilesTheme.isDark) {
+            CategoryVisuals(
+                Icons.Default.Audiotrack,
+                ChartAudioLime,
+                Color(0xFFA3E635).copy(alpha = 0.2f),
+                Color(0xFFA3E635),
+                Color(0xFF65A30D)
+            )
+        } else {
+            CategoryVisuals(
+                Icons.Default.Audiotrack,
+                AudioEmeraldLightTint,
+                AudioEmeraldLightBg,
+                Color(0xFF059669),
+                Color(0xFF047857)
+            )
+        }
+        FileCategory.ARCHIVE -> if (FilesTheme.isDark) {
+            CategoryVisuals(
+                Icons.Outlined.Download,
+                ChartDownloadsAmber,
+                Color(0xFFF59E0B).copy(alpha = 0.2f),
+                Color(0xFFF59E0B),
+                Color(0xFFB45309)
+            )
+        } else {
+            CategoryVisuals(
+                Icons.Outlined.Download,
+                FolderAmberLightTint,
+                FolderAmberLightBg,
+                Color(0xFFD97706),
+                Color(0xFFB45309)
+            )
+        }
+        else -> if (item.title.equals("System", ignoreCase = true)) {
+            if (FilesTheme.isDark) {
+                CategoryVisuals(
+                    Icons.Default.Settings,
+                    ChartSystemSlate,
+                    Color(0xFF94A3B8).copy(alpha = 0.2f),
+                    Color(0xFF94A3B8),
+                    Color(0xFF475569)
+                )
+            } else {
+                CategoryVisuals(
+                    Icons.Default.Settings,
+                    SystemSlateLightTint,
+                    SystemSlateLightBg,
+                    Color(0xFF475569),
+                    Color(0xFF334155)
+                )
+            }
+        } else {
+            if (FilesTheme.isDark) {
+                CategoryVisuals(
+                    Icons.Default.Apps,
+                    ChartAppsOrange,
+                    Color(0xFFFF5722).copy(alpha = 0.2f),
+                    Color(0xFFFF5722),
+                    Color(0xFFC2410C)
+                )
+            } else {
+                CategoryVisuals(
+                    Icons.Default.Apps,
+                    AppsOrangeLightTint,
+                    AppsOrangeLightBg,
+                    Color(0xFFEA580C),
+                    Color(0xFFC2410C)
+                )
+            }
         }
     }
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF140E26))
-            .border(1.dp, BorderSubtle.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+            .background(FilesTheme.colors.surface)
+            .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -868,7 +910,7 @@ fun CategoryCard(
                 Text(
                     text = item.fileCountLabel,
                     fontFamily = OutfitFontFamily,
-                    color = TextSecondary,
+                    color = FilesTheme.colors.textSecondary,
                     fontSize = 11.sp
                 )
             }
@@ -878,14 +920,14 @@ fun CategoryCard(
             Text(
                 text = item.title,
                 fontFamily = OutfitFontFamily,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = item.formattedSize,
                 fontFamily = OutfitFontFamily,
-                color = TextSecondary,
+                color = FilesTheme.colors.textSecondary,
                 fontSize = 12.sp
             )
 
@@ -896,7 +938,7 @@ fun CategoryCard(
                     .fillMaxWidth()
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF241A42))
+                    .background(if (FilesTheme.isDark) Color(0xFF241A42) else Color(0xFFF1F5F9))
             ) {
                 Box(
                     modifier = Modifier
@@ -936,13 +978,13 @@ fun CleanupRecommendationCard(
             Icon(
                 imageVector = Icons.Default.AutoAwesome,
                 contentDescription = null,
-                tint = ElectricPurple,
+                tint = FilesTheme.colors.primaryAccent,
                 modifier = Modifier.size(16.dp)
             )
             Text(
                 text = "Free up space",
                 fontFamily = OutfitFontFamily,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -954,10 +996,10 @@ fun CleanupRecommendationCard(
                 .clip(RoundedCornerShape(20.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFF191136), Color(0xFF120C24))
+                        listOf(FilesTheme.colors.bannerBgStart, FilesTheme.colors.bannerBgEnd)
                     )
                 )
-                .border(1.dp, CardBorderPurple.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
+                .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
                 .padding(16.dp)
         ) {
             Column(
@@ -973,13 +1015,13 @@ fun CleanupRecommendationCard(
                             .size(40.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF9333EA).copy(alpha = 0.25f))
-                            .border(1.dp, ElectricPurple.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
+                            .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.CleaningServices,
                             contentDescription = "Cleanup",
-                            tint = ElectricPurple,
+                            tint = FilesTheme.colors.primaryAccent,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -988,7 +1030,7 @@ fun CleanupRecommendationCard(
                         Text(
                             text = "Ready for a cleanup?",
                             fontFamily = OutfitFontFamily,
-                            color = TextPrimary,
+                            color = FilesTheme.colors.textPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -996,7 +1038,7 @@ fun CleanupRecommendationCard(
                         Text(
                             text = "Find unnecessary files and reclaim valuable storage.",
                             fontFamily = OutfitFontFamily,
-                            color = TextSecondary,
+                            color = FilesTheme.colors.textSecondary,
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
@@ -1011,8 +1053,8 @@ fun CleanupRecommendationCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF20153F))
-                            .border(1.dp, BorderSubtle, RoundedCornerShape(20.dp))
+                            .background(FilesTheme.colors.chipBg)
+                            .border(1.dp, FilesTheme.colors.chipBorder, RoundedCornerShape(20.dp))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Row(
@@ -1022,13 +1064,13 @@ fun CleanupRecommendationCard(
                             Text(
                                 text = "Reclaimable: ",
                                 fontFamily = OutfitFontFamily,
-                                color = TextSecondary,
+                                color = FilesTheme.colors.textSecondary,
                                 fontSize = 11.sp
                             )
                             Text(
                                 text = reclaimableFormatted,
                                 fontFamily = OutfitFontFamily,
-                                color = ChartPhotosCyan,
+                                color = if (FilesTheme.isDark) ChartPhotosCyan else Color(0xFF0284C7),
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -1043,7 +1085,7 @@ fun CleanupRecommendationCard(
                                     listOf(Color(0xFF9333EA), PurpleContainer)
                                 )
                             )
-                            .border(1.dp, ElectricPurple.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                             .clickable(onClick = onCleanupClick)
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -1053,13 +1095,13 @@ fun CleanupRecommendationCard(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AutoAwesome,
+                                imageVector = Icons.Default.CleaningServices,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Clean up",
+                                text = "Clean",
                                 fontFamily = OutfitFontFamily,
                                 color = Color.White,
                                 fontSize = 13.sp,
@@ -1085,7 +1127,7 @@ fun RecentFilesSection(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1095,7 +1137,7 @@ fun RecentFilesSection(
             Text(
                 text = "Recent files",
                 fontFamily = OutfitFontFamily,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -1107,14 +1149,14 @@ fun RecentFilesSection(
                 Text(
                     text = "See all",
                     fontFamily = OutfitFontFamily,
-                    color = ElectricPurple,
+                    color = FilesTheme.colors.primaryAccent,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
-                    tint = ElectricPurple,
+                    tint = FilesTheme.colors.primaryAccent,
                     modifier = Modifier.size(15.dp)
                 )
             }
@@ -1150,13 +1192,41 @@ fun RecentFileRow(
     var menuExpanded by remember { mutableStateOf(false) }
 
     val (icon, iconTint, iconBg) = when (file.category) {
-        FileCategory.IMAGE -> Triple(Icons.Default.Image, ElectricPurple, Color(0xFF20173D))
-        FileCategory.DOCUMENT -> Triple(Icons.Default.PictureAsPdf, PdfRed, PdfRedBg)
-        FileCategory.AUDIO -> Triple(Icons.Default.GraphicEq, ElectricMagenta, Color(0xFF3B0764))
-        FileCategory.ARCHIVE -> Triple(Icons.Default.FolderZip, ZipAmber, ZipAmberBg)
-        FileCategory.SPREADSHEET -> Triple(Icons.Default.TableChart, ExcelGreen, ExcelGreenBg)
-        FileCategory.VIDEO -> Triple(Icons.Default.PlayCircle, ElectricCyan, Color(0xFF0C4A6E))
-        else -> Triple(Icons.AutoMirrored.Filled.InsertDriveFile, TextSecondary, Color(0xFF20173D))
+        FileCategory.IMAGE -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.Image, ElectricPurple, Color(0xFF20173D))
+        } else {
+            Triple(Icons.Default.Image, PhotosCyanLightTint, PhotosCyanLightBg)
+        }
+        FileCategory.DOCUMENT -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.PictureAsPdf, PdfRed, PdfRedBg)
+        } else {
+            Triple(Icons.Default.PictureAsPdf, DocsRoseLightTint, DocsRoseLightBg)
+        }
+        FileCategory.AUDIO -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.GraphicEq, ElectricMagenta, Color(0xFF3B0764))
+        } else {
+            Triple(Icons.Default.GraphicEq, AudioEmeraldLightTint, AudioEmeraldLightBg)
+        }
+        FileCategory.ARCHIVE -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.FolderZip, ZipAmber, ZipAmberBg)
+        } else {
+            Triple(Icons.Default.FolderZip, FolderAmberLightTint, FolderAmberLightBg)
+        }
+        FileCategory.SPREADSHEET -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.TableChart, ExcelGreen, ExcelGreenBg)
+        } else {
+            Triple(Icons.Default.TableChart, AudioEmeraldLightTint, AudioEmeraldLightBg)
+        }
+        FileCategory.VIDEO -> if (FilesTheme.isDark) {
+            Triple(Icons.Default.PlayCircle, ElectricCyan, Color(0xFF0C4A6E))
+        } else {
+            Triple(Icons.Default.PlayCircle, VideosVioletLightTint, VideosVioletLightBg)
+        }
+        else -> if (FilesTheme.isDark) {
+            Triple(Icons.AutoMirrored.Filled.InsertDriveFile, TextSecondary, Color(0xFF20173D))
+        } else {
+            Triple(Icons.AutoMirrored.Filled.InsertDriveFile, SystemSlateLightTint, SystemSlateLightBg)
+        }
     }
 
     Row(
@@ -1205,7 +1275,7 @@ fun RecentFileRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = file.name,
-                color = TextPrimary,
+                color = FilesTheme.colors.textPrimary,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -1213,7 +1283,7 @@ fun RecentFileRow(
             )
             Text(
                 text = "${file.formattedDate} · ${file.formattedSize}",
-                color = TextSecondary,
+                color = FilesTheme.colors.textSecondary,
                 fontSize = 11.sp
             )
         }
@@ -1226,7 +1296,7 @@ fun RecentFileRow(
                 Icon(
                     imageVector = Icons.Outlined.MoreVert,
                     contentDescription = "Options",
-                    tint = TextMuted,
+                    tint = FilesTheme.colors.textMuted,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1249,9 +1319,9 @@ fun FloatingBottomNav(
     onTabSelect: (NavTab) -> Unit
 ) {
     Surface(
-        color = Color(0xEE140E26),
+        color = FilesTheme.colors.bottomNavBg,
         shape = RoundedCornerShape(999.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderPurple),
+        border = androidx.compose.foundation.BorderStroke(1.dp, FilesTheme.colors.bottomNavBorder),
         shadowElevation = 12.dp
     ) {
         Row(
@@ -1305,7 +1375,7 @@ fun BottomNavTabItem(
         Box(
             modifier = Modifier
                 .clip(CircleShape)
-                .background(Color(0xFFA855F7).copy(alpha = 0.2f))
+                .background(FilesTheme.colors.bottomNavActiveBg)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
@@ -1317,14 +1387,14 @@ fun BottomNavTabItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = contentDescription,
-                    tint = ElectricPurple,
+                    tint = FilesTheme.colors.bottomNavActiveIcon,
                     modifier = Modifier.size(22.dp)
                 )
                 Box(
                     modifier = Modifier
                         .size(4.dp)
                         .clip(CircleShape)
-                        .background(ElectricPurple)
+                        .background(FilesTheme.colors.bottomNavActiveIcon)
                 )
             }
         }
@@ -1333,7 +1403,7 @@ fun BottomNavTabItem(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = TextSecondary,
+                tint = FilesTheme.colors.bottomNavInactiveIcon,
                 modifier = Modifier.size(22.dp)
             )
         }

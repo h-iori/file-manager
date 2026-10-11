@@ -58,20 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ioristudios.filemanager.R
 import com.ioristudios.filemanager.data.ThemeMode
-import com.ioristudios.filemanager.theme.BorderSubtle
-import com.ioristudios.filemanager.theme.CardBorderPurple
-import com.ioristudios.filemanager.theme.ElectricPurple
-import com.ioristudios.filemanager.theme.OrbitronFontFamily
-import com.ioristudios.filemanager.theme.OutfitFontFamily
-import com.ioristudios.filemanager.theme.PurpleContainer
-import com.ioristudios.filemanager.theme.SettingAccentLight
-import com.ioristudios.filemanager.theme.SettingAccentLilac
-import com.ioristudios.filemanager.theme.SettingBorderDeep
-import com.ioristudios.filemanager.theme.SettingBorderSubtle
-import com.ioristudios.filemanager.theme.SettingCardBg
-import com.ioristudios.filemanager.theme.SettingIconBg
-import com.ioristudios.filemanager.theme.SettingSegmentedBg
-import com.ioristudios.filemanager.theme.SettingSwitchTrackOff
+import com.ioristudios.filemanager.theme.*
 import com.ioristudios.filemanager.theme.TextMuted
 import com.ioristudios.filemanager.theme.TextPrimary
 import com.ioristudios.filemanager.theme.TextSecondary
@@ -91,7 +78,7 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF090611))
+            .background(FilesTheme.colors.bg)
     ) {
         // Dedicated Settings Header with Back Arrow Button
         SettingsHeader(
@@ -130,18 +117,18 @@ fun SettingsScreen(
                             Text(
                                 text = "Theme Mode",
                                 fontFamily = OutfitFontFamily,
-                                color = TextPrimary,
+                                color = FilesTheme.colors.textPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
                                 text = when (state.themeMode) {
-                                    ThemeMode.LIGHT -> "Frosted Lavender Light"
+                                    ThemeMode.LIGHT -> "Luminous Crystal Light"
                                     ThemeMode.DARK -> "Electric Obsidian Nocturne"
                                     ThemeMode.AUTO -> "Follow System Default"
                                 },
                                 fontFamily = OutfitFontFamily,
-                                color = TextSecondary,
+                                color = FilesTheme.colors.textSecondary,
                                 fontSize = 12.sp
                             )
                         }
@@ -157,7 +144,7 @@ fun SettingsScreen(
                     )
                 }
 
-                HorizontalDivider(color = SettingBorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
 
                 // Show Hidden Files Toggle
                 SettingsToggleRow(
@@ -171,7 +158,7 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = SettingBorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
 
                 // Show File Extensions Toggle
                 SettingsToggleRow(
@@ -205,7 +192,7 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = SettingBorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
 
                 // Safe Folder & Encryption Row (Coming Soon per user decision)
                 Row(
@@ -225,17 +212,23 @@ fun SettingsScreen(
                                 .size(42.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF8B5CF6).copy(alpha = 0.25f), Color(0xFF3B0764).copy(alpha = 0.45f))
-                                    )
+                                    if (FilesTheme.isDark) {
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF8B5CF6).copy(alpha = 0.25f), Color(0xFF3B0764).copy(alpha = 0.45f))
+                                        )
+                                    } else {
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFFEDE9FE), Color(0xFFDDD6FE))
+                                        )
+                                    }
                                 )
-                                .border(1.dp, SettingBorderDeep, RoundedCornerShape(12.dp)),
+                                .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Lock,
                                 contentDescription = "Safe Folder",
-                                tint = SettingAccentLilac,
+                                tint = FilesTheme.colors.primaryAccent,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -248,7 +241,7 @@ fun SettingsScreen(
                                 Text(
                                     text = "Safe Folder & Encryption",
                                     fontFamily = OutfitFontFamily,
-                                    color = TextPrimary,
+                                    color = FilesTheme.colors.textPrimary,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -262,7 +255,7 @@ fun SettingsScreen(
                                     Text(
                                         text = "AES-256",
                                         fontFamily = OutfitFontFamily,
-                                        color = SettingAccentLight,
+                                        color = FilesTheme.colors.primaryAccent,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -271,7 +264,7 @@ fun SettingsScreen(
                             Text(
                                 text = "PIN protected · Biometrics enabled",
                                 fontFamily = OutfitFontFamily,
-                                color = TextSecondary,
+                                color = FilesTheme.colors.textSecondary,
                                 fontSize = 12.sp
                             )
                         }
@@ -280,7 +273,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = "Open",
-                        tint = TextMuted,
+                        tint = FilesTheme.colors.textMuted,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -307,10 +300,10 @@ fun SettingsScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(
                                 Brush.radialGradient(
-                                    listOf(Color(0xFF351C66), Color(0xFF130A24))
+                                    listOf(FilesTheme.colors.headerIconBgStart, FilesTheme.colors.headerIconBgEnd)
                                 )
                             )
-                            .border(1.2.dp, CardBorderPurple, RoundedCornerShape(18.dp)),
+                            .border(1.2.dp, FilesTheme.colors.headerIconBorder, RoundedCornerShape(18.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
@@ -327,7 +320,7 @@ fun SettingsScreen(
                     Text(
                         text = "Files by IORI STUDIOS",
                         fontFamily = OrbitronFontFamily,
-                        color = Color.White,
+                        color = FilesTheme.colors.textPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -337,7 +330,7 @@ fun SettingsScreen(
                     Text(
                         text = "High-Performance Obsidian Edition",
                         fontFamily = OutfitFontFamily,
-                        color = TextSecondary,
+                        color = FilesTheme.colors.textSecondary,
                         fontSize = 12.5.sp
                     )
 
@@ -347,14 +340,14 @@ fun SettingsScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF1B1335))
-                            .border(1.dp, CardBorderPurple.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                            .background(if (FilesTheme.isDark) Color(0xFF1B1335) else Color(0xFFEDE4FF))
+                            .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(20.dp))
                             .padding(horizontal = 14.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = "v2.4.0 (Build 8291)",
                             fontFamily = OutfitFontFamily,
-                            color = SettingAccentLight,
+                            color = FilesTheme.colors.primaryAccent,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -362,7 +355,7 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    HorizontalDivider(color = SettingBorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                    HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.3f), thickness = 0.8.dp)
 
                     // Check for updates action row
                     Row(
@@ -380,13 +373,13 @@ fun SettingsScreen(
                             Icon(
                                 imageVector = Icons.Default.Sync,
                                 contentDescription = "Check updates",
-                                tint = ElectricPurple,
+                                tint = FilesTheme.colors.primaryAccent,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = "Check for updates",
                                 fontFamily = OutfitFontFamily,
-                                color = TextPrimary,
+                                color = FilesTheme.colors.textPrimary,
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -395,12 +388,12 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = "Check",
-                            tint = TextMuted,
+                            tint = FilesTheme.colors.textMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    HorizontalDivider(color = SettingBorderSubtle.copy(alpha = 0.5f), thickness = 0.8.dp)
+                    HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.3f), thickness = 0.8.dp)
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -408,7 +401,7 @@ fun SettingsScreen(
                     Text(
                         text = "CRAFTED WITH PRECISION BY IORI STUDIOS",
                         fontFamily = OrbitronFontFamily,
-                        color = TextMuted.copy(alpha = 0.65f),
+                        color = FilesTheme.colors.textMuted.copy(alpha = 0.65f),
                         fontSize = 9.sp,
                         letterSpacing = 1.2.sp,
                         fontWeight = FontWeight.SemiBold
@@ -452,7 +445,7 @@ fun SettingsHeader(
                 fontFamily = OutfitFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 22.sp,
-                color = Color.White
+                color = FilesTheme.colors.textPrimary
             )
         }
 
@@ -489,7 +482,7 @@ fun SettingsSectionHeader(
         Text(
             text = title.uppercase(),
             fontFamily = OutfitFontFamily,
-            color = SettingAccentLight,
+            color = FilesTheme.colors.primaryAccent,
             fontSize = 11.5.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp
@@ -497,7 +490,7 @@ fun SettingsSectionHeader(
         Text(
             text = tag,
             fontFamily = OutfitFontFamily,
-            color = TextMuted,
+            color = FilesTheme.colors.textMuted,
             fontSize = 9.5.sp,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.2.sp
@@ -513,8 +506,8 @@ fun SettingsCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(SettingCardBg)
-            .border(1.dp, SettingBorderDeep, RoundedCornerShape(22.dp))
+            .background(FilesTheme.colors.settingCardBg)
+            .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
         Column(
@@ -534,14 +527,14 @@ fun SettingsIconSquircle(
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(SettingIconBg)
-            .border(1.dp, SettingBorderDeep, RoundedCornerShape(12.dp)),
+            .background(FilesTheme.colors.settingIconBg)
+            .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = SettingAccentLilac,
+            tint = FilesTheme.colors.primaryAccent,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -559,8 +552,8 @@ fun ThemeSegmentedControl(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(SettingSegmentedBg)
-            .border(0.8.dp, SettingBorderDeep, RoundedCornerShape(12.dp))
+            .background(FilesTheme.colors.settingSegmentedBg)
+            .border(0.8.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(12.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -598,9 +591,15 @@ fun ThemeSegmentItem(
 ) {
     val bgModifier = if (isSelected) {
         Modifier.background(
-            Brush.horizontalGradient(
-                listOf(PurpleContainer, Color(0xFF9333EA))
-            )
+            if (FilesTheme.isDark) {
+                Brush.horizontalGradient(
+                    listOf(PurpleContainer, Color(0xFF9333EA))
+                )
+            } else {
+                Brush.horizontalGradient(
+                    listOf(AccentPrimaryLight, AccentAzureLight)
+                )
+            }
         )
     } else {
         Modifier.background(Color.Transparent)
@@ -621,13 +620,13 @@ fun ThemeSegmentItem(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (isSelected) Color.White else TextMuted,
+                tint = if (isSelected) Color.White else FilesTheme.colors.textSecondary,
                 modifier = Modifier.size(15.dp)
             )
             Text(
                 text = title,
                 fontFamily = OutfitFontFamily,
-                color = if (isSelected) Color.White else TextMuted,
+                color = if (isSelected) Color.White else FilesTheme.colors.textSecondary,
                 fontSize = 11.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
             )
@@ -660,14 +659,14 @@ fun SettingsToggleRow(
                 Text(
                     text = title,
                     fontFamily = OutfitFontFamily,
-                    color = TextPrimary,
+                    color = FilesTheme.colors.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = subtitle,
                     fontFamily = OutfitFontFamily,
-                    color = TextSecondary,
+                    color = FilesTheme.colors.textSecondary,
                     fontSize = 12.sp
                 )
             }
@@ -694,7 +693,7 @@ fun GlassSwitch(
         label = "thumbOffset"
     )
     val trackColor by animateColorAsState(
-        targetValue = if (checked) PurpleContainer else SettingSwitchTrackOff,
+        targetValue = if (checked) (if (FilesTheme.isDark) PurpleContainer else AccentPrimaryLight) else FilesTheme.colors.settingSwitchTrackOff,
         animationSpec = tween(durationMillis = 180),
         label = "trackColor"
     )
@@ -707,7 +706,7 @@ fun GlassSwitch(
             .background(trackColor)
             .border(
                 1.dp,
-                if (checked) PurpleContainer.copy(alpha = 0.5f) else SettingBorderDeep,
+                if (checked) (if (FilesTheme.isDark) PurpleContainer.copy(alpha = 0.5f) else AccentPrimaryLight.copy(alpha = 0.5f)) else FilesTheme.colors.settingCardBorder,
                 CircleShape
             )
             .clickable(

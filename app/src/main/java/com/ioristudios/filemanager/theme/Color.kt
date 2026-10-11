@@ -59,13 +59,50 @@ val SettingBorderDeep = Color(0xFF2E2050)
 val SettingAccentLight = Color(0xFFD8B4FE)
 val SettingAccentLilac = Color(0xFFC084FC)
 
-// Frosted Obsidian Light Theme Tokens
-val BgLight = Color(0xFFF7F5FC)
-val SurfaceLight = Color(0xFFFFFFFF)
-val SurfaceLightHigh = Color(0xFFEDE8F8)
-val SurfaceLightLow = Color(0xFFF2EEFA)
-val TextPrimaryLight = Color(0xFF160F2E)
-val TextSecondaryLight = Color(0xFF6B5E87)
-val TextMutedLight = Color(0xFF9E92BA)
-val BorderSubtleLight = Color(0x33A855F7)
+// Luminous Crystal & Royal Indigo Light Theme Tokens
+val BgLight = Color(0xFFF6F8FA)               // Crisp, ultra-clean porcelain canvas
+val BgSecondaryLight = Color(0xFFEEF2F6)      // Soft porcelain slate
+val SurfaceLight = Color(0xFFFFFFFF)          // Pure brilliant white card surface
+val SurfaceLightHigh = Color(0xFFF8FAFC)      // Elevated crisp white
+val CardBorderLight = Color(0xFFE2E8F0)       // Subtle, elegant slate border (no harsh wireframe)
+val BorderSubtleLight = Color(0xFFEDF2F7)     // Extra subtle border
+
+// Typography Contrast Tokens (Light Mode - WCAG AAA Compliant)
+val TextPrimaryLight = Color(0xFF0F172A)      // Deep obsidian slate (100% crisp & legible)
+val TextSecondaryLight = Color(0xFF475569)    // Authoritative slate grey
+val TextMutedLight = Color(0xFF64748B)        // Refined cool slate
+
+// Light Accents
+val AccentPrimaryLight = Color(0xFF4F46E5)    // Royal Indigo (authoritative, luxurious)
+val AccentSecondaryLight = Color(0xFF6366F1)  // Electric Indigo
+val AccentAzureLight = Color(0xFF2563EB)      // Vibrant Azure Blue
+
+// Light Category Squircle Backgrounds & Borders (Vibrant pastel containers)
+val FolderAmberLightBg = Color(0xFFFEF3C7)    // Amber-100
+val FolderAmberLightTint = Color(0xFFD97706)  // Amber-600
+val FolderAmberLightBorder = Color(0xFFFDE68A)
+
+val PhotosCyanLightBg = Color(0xFFE0F2FE)     // Sky-100
+val PhotosCyanLightTint = Color(0xFF0284C7)   // Sky-600
+val PhotosCyanLightBorder = Color(0xFFBAE6FD)
+
+val VideosVioletLightBg = Color(0xFFEDE9FE)   // Violet-100
+val VideosVioletLightTint = Color(0xFF7C3AED) // Violet-600
+val VideosVioletLightBorder = Color(0xFFDDD6FE)
+
+val AudioEmeraldLightBg = Color(0xFFD1FAE5)   // Emerald-100
+val AudioEmeraldLightTint = Color(0xFF059669) // Emerald-600
+val AudioEmeraldLightBorder = Color(0xFFA7F3D0)
+
+val DocsRoseLightBg = Color(0xFFFFE4E6)       // Rose-100
+val DocsRoseLightTint = Color(0xFFE11D48)     // Rose-600
+val DocsRoseLightBorder = Color(0xFFFECDD3)
+
+val AppsOrangeLightBg = Color(0xFFFFEDD5)     // Orange-100
+val AppsOrangeLightTint = Color(0xFFEA580C)   // Orange-600
+val AppsOrangeLightBorder = Color(0xFFFED7AA)
+
+val SystemSlateLightBg = Color(0xFFF1F5F9)    // Slate-100
+val SystemSlateLightTint = Color(0xFF475569)  // Slate-600
+val SystemSlateLightBorder = Color(0xFFE2E8F0)
 
