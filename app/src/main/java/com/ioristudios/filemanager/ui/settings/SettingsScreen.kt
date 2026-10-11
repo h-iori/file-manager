@@ -83,8 +83,7 @@ fun SettingsScreen(
         // Dedicated Settings Header with Back Arrow Button
         SettingsHeader(
             onBackClick = onBackClick,
-            onSearchClick = { showMessage("Search settings coming soon") },
-            onMenuClick = { showMessage("More options") }
+            onSearchClick = { showMessage("Search settings coming soon") }
         )
 
         // Scrollable content
@@ -419,7 +418,6 @@ fun SettingsScreen(
 fun SettingsHeader(
     onBackClick: () -> Unit,
     onSearchClick: () -> Unit,
-    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -449,21 +447,11 @@ fun SettingsHeader(
             )
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            GlassIconButton(
-                icon = Icons.Default.Search,
-                contentDescription = "Search",
-                onClick = onSearchClick
-            )
-            GlassIconButton(
-                icon = Icons.Default.MoreVert,
-                contentDescription = "More",
-                onClick = onMenuClick
-            )
-        }
+        GlassIconButton(
+            icon = Icons.Default.Search,
+            contentDescription = "Search",
+            onClick = onSearchClick
+        )
     }
 }
 

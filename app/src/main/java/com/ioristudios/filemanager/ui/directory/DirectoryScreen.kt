@@ -113,6 +113,7 @@ fun DirectoryScreen(
         // Shared Top Brand Header (Identical to Stitch Screen 5 & Screen 6)
         AppHeader(
             onSearchClick = { showMessage("Directory search coming soon") },
+            showMenuButton = true,
             onMenuClick = { viewModel.selectTab(NavTab.SETTINGS) }
         )
 

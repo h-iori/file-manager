@@ -230,7 +230,7 @@ fun HomeScreenContent(
         // App Header
         AppHeader(
             onSearchClick = { showMessage("Global file search coming soon") },
-            onMenuClick = onSettingsClick
+            showMenuButton = false
         )
 
         // Scrollable Content
@@ -362,7 +362,8 @@ fun PlaceholderScreen(
 @Composable
 fun AppHeader(
     onSearchClick: () -> Unit,
-    onMenuClick: () -> Unit
+    showMenuButton: Boolean = false,
+    onMenuClick: () -> Unit = {}
 ) {
     val transition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by transition.animateFloat(
@@ -485,11 +486,13 @@ fun AppHeader(
                 contentDescription = "Search",
                 onClick = onSearchClick
             )
-            GlassIconButton(
-                icon = Icons.Outlined.MoreVert,
-                contentDescription = "More",
-                onClick = onMenuClick
-            )
+            if (showMenuButton) {
+                GlassIconButton(
+                    icon = Icons.Outlined.MoreVert,
+                    contentDescription = "More",
+                    onClick = onMenuClick
+                )
+            }
         }
     }
 }
