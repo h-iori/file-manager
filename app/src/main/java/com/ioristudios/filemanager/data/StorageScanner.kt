@@ -7,28 +7,167 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
+import android.os.storage.StorageManager
+import android.webkit.MimeTypeMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
 class StorageScanner(private val context: Context) {
 
-    suspend fun scanHomeScreenData(hasFullPermission: Boolean): HomeScreenData = withContext(Dispatchers.IO) {
-        val storage = getRealStorageOverview()
+    data class CachedDirStats(
+        val lastModified: Long,
+        val totalBytes: Long,
+        val totalFiles: Int,
+        val timestamp: Long
+    )
+
+    private val dirStatsCache = ConcurrentHashMap<String, CachedDirStats>()
+
+    fun clearDirCache() {
+        dirStatsCache.clear()
+    }
+
+    suspend fun scanHomeScreenData(
+        hasFullPermission: Boolean,
+        selectedVolumeId: String? = null
+    ): HomeScreenData = withContext(Dispatchers.IO) {
+        val availableVolumes = getAvailableStorageVolumes()
+        val activeVolume = availableVolumes.find { it.id == selectedVolumeId }
+            ?: availableVolumes.firstOrNull { it.id == "internal" }
+            ?: availableVolumes.first()
+
+        val storage = if (activeVolume.type == StorageVolumeType.INTERNAL) {
+            getRealStorageOverview()
+        } else {
+            getVolumeStorageOverview(activeVolume)
+        }
         val categories = getRealCategories(storage.totalBytes)
         val recentFiles = getRealRecentFiles()
 
         HomeScreenData(
             storage = storage,
+            availableVolumes = availableVolumes,
+            selectedVolumeId = activeVolume.id,
             categories = categories,
             recentFiles = recentFiles,
             hasPermission = hasFullPermission,
             reclaimableFormatted = "2.4 GB"
+        )
+    }
+
+    fun getAvailableStorageVolumes(): List<StorageVolumeInfo> {
+        val list = mutableListOf<StorageVolumeInfo>()
+        val internalFile = Environment.getExternalStorageDirectory()
+        val internalStat = try { StatFs(internalFile.path) } catch (_: Exception) { null }
+        val internalTotal = internalStat?.let { it.blockCountLong * it.blockSizeLong } ?: (128L * 1024 * 1024 * 1024)
+        val internalFree = internalStat?.let { it.availableBlocksLong * it.blockSizeLong } ?: (64L * 1024 * 1024 * 1024)
+        val internalUsed = max(0L, internalTotal - internalFree)
+        val internalPercent = if (internalTotal > 0) (internalUsed.toFloat() / internalTotal.toFloat()) * 100f else 0f
+
+        list.add(
+            StorageVolumeInfo(
+                id = "internal",
+                name = "Internal storage",
+                path = internalFile.absolutePath,
+                type = StorageVolumeType.INTERNAL,
+                totalBytes = internalTotal,
+                freeBytes = internalFree,
+                usedBytes = internalUsed,
+                formattedTotal = formatBytes(internalTotal),
+                formattedFree = formatBytes(internalFree),
+                formattedUsed = formatBytes(internalUsed),
+                usedPercent = internalPercent,
+                isMounted = true
+            )
+        )
+
+        // Check for Removable SD Cards and USB OTG
+        try {
+            val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
+            if (storageManager != null) {
+                val volumes = storageManager.storageVolumes
+                for (vol in volumes) {
+                    if (vol.isPrimary) continue
+                    val state = vol.state
+                    if (state != Environment.MEDIA_MOUNTED && state != Environment.MEDIA_MOUNTED_READ_ONLY) continue
+
+                    val dirFile: File? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        vol.directory
+                    } else {
+                        try {
+                            val getPathMethod = vol.javaClass.getMethod("getPath")
+                            val pathStr = getPathMethod.invoke(vol) as? String
+                            pathStr?.let { File(it) }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+
+                    val path = dirFile?.absolutePath ?: continue
+                    if (!dirFile.exists() || !dirFile.canRead()) continue
+
+                    val desc = vol.getDescription(context).trim()
+                    val lower = desc.lowercase(Locale.ROOT)
+                    val isUsb = lower.contains("usb") || lower.contains("otg") || lower.contains("drive") || lower.contains("flash")
+                    val type = if (isUsb) StorageVolumeType.USB_OTG else StorageVolumeType.SD_CARD
+                    val defaultName = if (isUsb) "USB Storage" else "SD Card"
+                    val displayName = if (desc.isNotBlank()) desc else defaultName
+
+                    val stat = try { StatFs(path) } catch (_: Exception) { null }
+                    val total = stat?.let { it.blockCountLong * it.blockSizeLong } ?: 0L
+                    val free = stat?.let { it.availableBlocksLong * it.blockSizeLong } ?: 0L
+                    val used = max(0L, total - free)
+                    val percent = if (total > 0) (used.toFloat() / total.toFloat()) * 100f else 0f
+
+                    list.add(
+                        StorageVolumeInfo(
+                            id = if (isUsb) "otg_${vol.uuid ?: path.hashCode()}" else "sdcard_${vol.uuid ?: path.hashCode()}",
+                            name = displayName,
+                            path = path,
+                            type = type,
+                            totalBytes = total,
+                            freeBytes = free,
+                            usedBytes = used,
+                            formattedTotal = formatBytes(total),
+                            formattedFree = formatBytes(free),
+                            formattedUsed = formatBytes(used),
+                            usedPercent = percent,
+                            isMounted = true
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+
+        return list
+    }
+
+    private fun getVolumeStorageOverview(volume: StorageVolumeInfo): StorageOverview {
+        return StorageOverview(
+            totalBytes = volume.totalBytes,
+            usedBytes = volume.usedBytes,
+            freeBytes = volume.freeBytes,
+            usedPercent = volume.usedPercent,
+            formattedTotal = volume.formattedTotal,
+            formattedUsed = volume.formattedUsed,
+            formattedFree = volume.formattedFree,
+            photosBytes = (volume.usedBytes * 0.35).toLong(),
+            videosBytes = (volume.usedBytes * 0.25).toLong(),
+            documentsBytes = (volume.usedBytes * 0.15).toLong(),
+            audioBytes = (volume.usedBytes * 0.10).toLong(),
+            downloadsBytes = (volume.usedBytes * 0.08).toLong(),
+            appsBytes = 0L,
+            systemBytes = (volume.usedBytes * 0.07).toLong()
         )
     }
 
@@ -42,48 +181,60 @@ class StorageScanner(private val context: Context) {
 
         val rawFiles = dir.listFiles()?.filter { showHiddenFiles || !it.name.startsWith(".") } ?: emptyList()
 
+        // High-speed non-blocking directory enumeration
         val items = rawFiles.map { file ->
             val isDir = file.isDirectory
-            val childCount = if (isDir) {
-                file.listFiles()?.filter { showHiddenFiles || !it.name.startsWith(".") }?.size ?: 0
-            } else 0
+            val protectionInfo = SecurityProtectionManager.checkProtection(file.absolutePath)
 
-            val sizeBytes = if (isDir) {
-                calculateShallowDirSize(file)
+            val (sizeBytes, childCount, fileCountLabel) = if (isDir) {
+                val count = try {
+                    file.list()?.count { showHiddenFiles || !it.startsWith(".") } ?: 0
+                } catch (_: Exception) {
+                    0
+                }
+                val label = when {
+                    protectionInfo.isProtected && protectionInfo.level == ProtectionLevel.SCOPED_STORAGE_RESTRICTED ->
+                        "Protected · Scoped Storage"
+                    protectionInfo.isProtected && protectionInfo.level == ProtectionLevel.SYSTEM_CORE_LOCKED ->
+                        "System Core · Locked"
+                    count == 0 -> "Empty folder"
+                    count == 1 -> "1 item"
+                    else -> "$count items"
+                }
+                Triple(0L, count, label)
             } else {
-                file.length()
+                val len = file.length()
+                val formattedSize = formatBytes(len)
+                val formattedDate = formatRelativeDate(file.lastModified())
+                Triple(len, 1, "$formattedSize · $formattedDate")
             }
 
             val visualType = if (isDir) {
-                detectFolderVisualType(file.name)
+                detectFolderVisualType(file.name, file.absolutePath)
             } else {
-                DirectoryVisualType.FILE_GENERIC
+                detectFileVisualType(file.name)
             }
 
-            val fileCountLabel = if (isDir) {
-                if (childCount == 1) "1 item" else "$childCount items"
-            } else {
-                formatBytes(sizeBytes)
+            val mime = if (isDir) "" else {
+                val ext = file.extension.lowercase(Locale.ROOT)
+                MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
             }
-
-            val formattedSize = formatBytes(sizeBytes)
-            val formattedDate = formatRelativeDate(file.lastModified())
 
             DirectoryItem(
                 name = file.name,
                 path = file.absolutePath,
                 isDirectory = isDir,
                 sizeBytes = sizeBytes,
-                formattedSize = formattedSize,
+                formattedSize = if (isDir) "" else formatBytes(sizeBytes),
                 childCount = childCount,
-                fileCountLabel = if (isDir) {
-                    if (childCount == 1) "1 file · $formattedSize" else "$childCount files · $formattedSize"
-                } else {
-                    "$formattedSize · $formattedDate"
-                },
+                fileCountLabel = fileCountLabel,
                 dateModifiedMs = file.lastModified(),
-                formattedDate = formattedDate,
-                visualType = visualType
+                formattedDate = formatRelativeDate(file.lastModified()),
+                visualType = visualType,
+                mimeType = mime,
+                isProtected = protectionInfo.isProtected,
+                protectionLevel = protectionInfo.level,
+                protectionReason = protectionInfo.description
             )
         }
 
@@ -91,30 +242,155 @@ class StorageScanner(private val context: Context) {
         sortDirectoryItems(items, sortOption)
     }
 
-    private fun calculateShallowDirSize(dir: File): Long {
-        return try {
-            dir.listFiles()?.sumOf { if (it.isFile) it.length() else 0L } ?: 0L
-        } catch (_: Exception) {
-            0L
+    private fun calculateRecursiveDirStats(
+        dir: File,
+        showHiddenFiles: Boolean,
+        maxDepth: Int = 12,
+        maxFilesLimit: Int = 100_000
+    ): Pair<Long, Int> {
+        val dirPath = dir.absolutePath
+        val currentModified = dir.lastModified()
+        val now = System.currentTimeMillis()
+
+        val cached = dirStatsCache[dirPath]
+        if (cached != null && (now - cached.timestamp < 30_000L || cached.lastModified == currentModified)) {
+            return Pair(cached.totalBytes, cached.totalFiles)
+        }
+
+        var totalSize = 0L
+        var totalFiles = 0
+        val queue = java.util.ArrayDeque<Pair<File, Int>>()
+        queue.add(Pair(dir, 0))
+
+        while (!queue.isEmpty() && totalFiles < maxFilesLimit) {
+            val (current, depth) = queue.poll() ?: break
+            if (depth > maxDepth) continue
+
+            val children = try {
+                current.listFiles()
+            } catch (_: Throwable) {
+                null
+            } ?: continue
+
+            for (child in children) {
+                if (!showHiddenFiles && child.name.startsWith(".")) continue
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && java.nio.file.Files.isSymbolicLink(child.toPath())) {
+                        continue
+                    }
+                } catch (_: Throwable) {}
+
+                if (child.isDirectory) {
+                    queue.add(Pair(child, depth + 1))
+                } else if (child.isFile) {
+                    val len = child.length()
+                    if (len > 0L) {
+                        totalSize += len
+                    }
+                    totalFiles++
+                }
+            }
+        }
+
+        dirStatsCache[dirPath] = CachedDirStats(
+            lastModified = currentModified,
+            totalBytes = totalSize,
+            totalFiles = totalFiles,
+            timestamp = now
+        )
+
+        return Pair(totalSize, totalFiles)
+    }
+
+    fun detectFolderVisualType(name: String, fullPath: String = ""): DirectoryVisualType {
+        val lower = name.lowercase(Locale.ROOT)
+        val pathLower = fullPath.replace('\\', '/').lowercase(Locale.ROOT)
+
+        val protection = SecurityProtectionManager.checkProtection(fullPath)
+        if (protection.isProtected && (lower == "data" || lower == "obb" || protection.level == ProtectionLevel.SYSTEM_CORE_LOCKED)) {
+            return DirectoryVisualType.FOLDER_PROTECTED
+        }
+
+        return when {
+            // WhatsApp
+            lower.contains("whatsapp") || pathLower.contains("com.whatsapp") -> DirectoryVisualType.FOLDER_WHATSAPP
+            // Telegram
+            lower.contains("telegram") || pathLower.contains("org.telegram") -> DirectoryVisualType.FOLDER_TELEGRAM
+            // Instagram
+            lower == "instagram" || pathLower.contains("instagram") -> DirectoryVisualType.FOLDER_INSTAGRAM
+            // Facebook / Messenger
+            lower == "facebook" || lower == "messenger" || pathLower.contains("com.facebook") -> DirectoryVisualType.FOLDER_FACEBOOK
+            // Twitter / X
+            lower == "twitter" || lower == "x" || pathLower.contains("com.twitter") -> DirectoryVisualType.FOLDER_TWITTER
+            // Snapchat
+            lower.contains("snapchat") || pathLower.contains("com.snapchat") -> DirectoryVisualType.FOLDER_SNAPCHAT
+            // TikTok
+            lower.contains("tiktok") || pathLower.contains("musically") -> DirectoryVisualType.FOLDER_TIKTOK
+            // YouTube
+            lower.contains("youtube") || pathLower.contains("com.google.android.youtube") -> DirectoryVisualType.FOLDER_YOUTUBE
+            // Discord
+            lower.contains("discord") || pathLower.contains("com.discord") -> DirectoryVisualType.FOLDER_DISCORD
+            // Spotify
+            lower.contains("spotify") || pathLower.contains("com.spotify") -> DirectoryVisualType.FOLDER_SPOTIFY
+            // Reddit
+            lower.contains("reddit") || pathLower.contains("com.reddit") -> DirectoryVisualType.FOLDER_REDDIT
+            // Netflix
+            lower.contains("netflix") || pathLower.contains("com.netflix") -> DirectoryVisualType.FOLDER_NETFLIX
+            // GitHub
+            lower == "github" || pathLower.contains("github") -> DirectoryVisualType.FOLDER_GITHUB
+            // Google Drive
+            lower == "google drive" || lower == "drive" || pathLower.contains("google.android.apps.docs") -> DirectoryVisualType.FOLDER_GOOGLE_DRIVE
+            // DCIM & Camera
+            lower == "dcim" || lower == "camera" -> DirectoryVisualType.FOLDER_CAMERA
+            // Screenshots
+            lower == "screenshots" || lower.contains("screenshot") -> DirectoryVisualType.FOLDER_SCREENSHOTS
+            // Pictures & Photos
+            lower == "pictures" || lower == "photos" -> DirectoryVisualType.FOLDER_PICTURES
+            // Downloads
+            lower.contains("download") -> DirectoryVisualType.FOLDER_DOWNLOADS
+            // Documents & Books
+            lower.contains("document") || lower == "books" || lower == "ebooks" -> DirectoryVisualType.FOLDER_DOCUMENTS
+            // Movies & Videos
+            lower.contains("movie") || lower.contains("video") -> DirectoryVisualType.FOLDER_MOVIES
+            // Music & Audio
+            lower.contains("music") || lower.contains("audio") || lower.contains("ringtone") || lower.contains("alarm") -> DirectoryVisualType.FOLDER_MUSIC
+            // Voice & Recordings
+            lower.contains("recording") || lower.contains("voice") || lower.contains("recorder") -> DirectoryVisualType.FOLDER_RECORDINGS
+            // Podcasts
+            lower.contains("podcast") -> DirectoryVisualType.FOLDER_PODCASTS
+            // Bluetooth
+            lower.contains("bluetooth") -> DirectoryVisualType.FOLDER_BLUETOOTH
+            // Code & Git & Dev
+            lower == "git" || lower == "github" || lower == "projects" || lower == "code" || lower == "src" || lower == "dev" -> DirectoryVisualType.FOLDER_CODE
+            // Backups & Archives
+            lower.contains("backup") || lower.contains("archives") -> DirectoryVisualType.FOLDER_ARCHIVES
+            // Android Core
+            lower == "android" -> DirectoryVisualType.FOLDER_ANDROID
+            else -> DirectoryVisualType.FOLDER
         }
     }
 
-    private fun detectFolderVisualType(name: String): DirectoryVisualType {
-        val lower = name.lowercase(Locale.ROOT)
+    fun detectFileVisualType(name: String, mimeType: String = ""): DirectoryVisualType {
+        val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val mimeLower = mimeType.lowercase(Locale.ROOT)
+
         return when {
-            lower == "dcim" -> DirectoryVisualType.CAMERA
-            lower.contains("download") -> DirectoryVisualType.DOWNLOAD
-            lower.contains("document") -> DirectoryVisualType.DOCUMENT
-            lower.contains("movie") || lower.contains("video") -> DirectoryVisualType.MOVIE
-            lower.contains("music") || lower.contains("audio") -> DirectoryVisualType.HEADPHONES
-            lower.contains("picture") || lower.contains("photo") -> DirectoryVisualType.IMAGE
-            lower.contains("telegram") -> DirectoryVisualType.SEND
-            lower.contains("recording") || lower.contains("voice") -> DirectoryVisualType.MIC
-            lower.contains("backup") -> DirectoryVisualType.BACKUP
-            lower.contains("podcast") -> DirectoryVisualType.PODCASTS
-            lower.contains("notification") -> DirectoryVisualType.NOTIFICATIONS
-            lower == "android" -> DirectoryVisualType.ANDROID
-            else -> DirectoryVisualType.FOLDER
+            ext == "pdf" || mimeLower.contains("pdf") -> DirectoryVisualType.FILE_PDF
+            ext in setOf("doc", "docx", "odt", "rtf", "dot", "dotx") || mimeLower.contains("word") -> DirectoryVisualType.FILE_WORD
+            ext in setOf("xls", "xlsx", "csv", "tsv", "ods", "xlsm") || mimeLower.contains("excel") || mimeLower.contains("spreadsheet") -> DirectoryVisualType.FILE_EXCEL
+            ext in setOf("ppt", "pptx", "odp", "pps", "ppsx") || mimeLower.contains("presentation") || mimeLower.contains("powerpoint") -> DirectoryVisualType.FILE_POWERPOINT
+            ext in setOf("txt", "md", "markdown", "log", "readme", "conf", "cfg", "ini") || mimeLower.startsWith("text/plain") -> DirectoryVisualType.FILE_TEXT
+            ext in setOf("kt", "java", "py", "js", "ts", "jsx", "tsx", "html", "htm", "css", "scss", "json", "xml", "c", "cpp", "h", "hpp", "cs", "php", "go", "rs", "swift", "rb", "sh", "bash", "bat", "sql") -> DirectoryVisualType.FILE_CODE
+            ext in setOf("zip", "rar", "7z", "tar", "gz", "bz2", "xz", "zst", "tgz", "iso", "cab", "lzma") -> DirectoryVisualType.FILE_ARCHIVE
+            ext in setOf("apk", "apks", "xapk", "aab") -> DirectoryVisualType.FILE_APK
+            ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "heic", "heif", "tiff", "ico") || mimeLower.startsWith("image/") -> DirectoryVisualType.FILE_IMAGE
+            ext in setOf("mp4", "mkv", "avi", "mov", "flv", "webm", "3gp", "wmv", "m4v", "ts") || mimeLower.startsWith("video/") -> DirectoryVisualType.FILE_VIDEO
+            ext in setOf("mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "mid", "amr", "alac") || mimeLower.startsWith("audio/") -> DirectoryVisualType.FILE_AUDIO
+            ext in setOf("db", "sqlite", "sqlite3", "realm", "mdb") -> DirectoryVisualType.FILE_DATABASE
+            ext in setOf("ttf", "otf", "woff", "woff2", "fnt") -> DirectoryVisualType.FILE_FONT
+            ext in setOf("torrent", "magnet") -> DirectoryVisualType.FILE_TORRENT
+            ext in setOf("bin", "img", "dat", "rom", "cue", "vdi", "vmdk") -> DirectoryVisualType.FILE_SYSTEM
+            else -> DirectoryVisualType.FILE_GENERIC
         }
     }
 

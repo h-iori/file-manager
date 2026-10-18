@@ -68,6 +68,8 @@ import com.ioristudios.filemanager.theme.TextMuted
 import com.ioristudios.filemanager.theme.TextPrimary
 import com.ioristudios.filemanager.theme.TextSecondary
 import com.ioristudios.filemanager.ui.components.GlassIconButton
+import com.ioristudios.filemanager.ui.components.elasticBounce
+import com.ioristudios.filemanager.ui.components.staggeredEntrance
 import com.ioristudios.filemanager.ui.main.MainScreenViewModel
 
 @Composable
@@ -105,7 +107,7 @@ fun SettingsScreen(
                 tag = "UI / GRAPHICS"
             )
 
-            SettingsCard {
+            SettingsCard(modifier = Modifier.staggeredEntrance(index = 0)) {
                 // Theme Mode Segmented Switcher
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -182,7 +184,7 @@ fun SettingsScreen(
                 tag = "HARDWARE & DISK"
             )
 
-            SettingsCard {
+            SettingsCard(modifier = Modifier.staggeredEntrance(index = 1)) {
                 // Recycle Bin / Trash Toggle
                 SettingsToggleRow(
                     icon = Icons.Default.DeleteOutline,
@@ -291,7 +293,7 @@ fun SettingsScreen(
             val haptics = LocalAppHaptics.current
             var hapticsActive by remember { mutableStateOf(haptics.isEnabled) }
 
-            SettingsCard {
+            SettingsCard(modifier = Modifier.staggeredEntrance(index = 2)) {
                 // Master Haptic Feedback Switch
                 SettingsToggleRow(
                     icon = Icons.Default.Vibration,
@@ -392,7 +394,7 @@ fun SettingsScreen(
                 tag = "IORI STUDIOS"
             )
 
-            SettingsCard {
+            SettingsCard(modifier = Modifier.staggeredEntrance(index = 3)) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -585,10 +587,11 @@ fun SettingsSectionHeader(
 
 @Composable
 fun SettingsCard(
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(FilesTheme.colors.settingCardBg)
@@ -626,43 +629,74 @@ fun SettingsIconSquircle(
 }
 
 /**
- * Custom animated 3-way Segmented Control matching Stitch Design
+ * Custom animated 3-way Segmented Control matching Stitch Design with sliding glass pill
  */
 @Composable
 fun ThemeSegmentedControl(
     selectedMode: ThemeMode,
     onModeSelected: (ThemeMode) -> Unit
 ) {
-    Row(
+    val motion = LocalMotionSensitivity.current
+    val modes = remember { listOf(ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.AUTO) }
+    val selectedIndex = modes.indexOf(selectedMode).coerceAtLeast(0)
+
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(FilesTheme.colors.settingSegmentedBg)
             .border(0.8.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(12.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(4.dp)
     ) {
-        ThemeSegmentItem(
-            title = "Light",
-            icon = Icons.Default.LightMode,
-            isSelected = selectedMode == ThemeMode.LIGHT,
-            modifier = Modifier.weight(1f),
-            onClick = { onModeSelected(ThemeMode.LIGHT) }
+        val segmentWidth = maxWidth / 3
+        val pillOffset by animateDpAsState(
+            targetValue = segmentWidth * selectedIndex,
+            animationSpec = if (motion.isReducedMotion) tween(80) else MotionTokens.SpringPillSlide,
+            label = "ThemePillOffset"
         )
-        ThemeSegmentItem(
-            title = "Dark",
-            icon = Icons.Default.DarkMode,
-            isSelected = selectedMode == ThemeMode.DARK,
-            modifier = Modifier.weight(1f),
-            onClick = { onModeSelected(ThemeMode.DARK) }
+
+        // Sliding Active Gradient Pill
+        Box(
+            modifier = Modifier
+                .offset(x = pillOffset)
+                .width(segmentWidth)
+                .height(36.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (FilesTheme.isDark) {
+                        Brush.horizontalGradient(listOf(PurpleContainer, Color(0xFF9333EA)))
+                    } else {
+                        Brush.horizontalGradient(listOf(AccentPrimaryLight, AccentAzureLight))
+                    }
+                )
         )
-        ThemeSegmentItem(
-            title = "Auto",
-            icon = Icons.Default.BrightnessAuto,
-            isSelected = selectedMode == ThemeMode.AUTO,
-            modifier = Modifier.weight(1f),
-            onClick = { onModeSelected(ThemeMode.AUTO) }
-        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            ThemeSegmentItem(
+                title = "Light",
+                icon = Icons.Default.LightMode,
+                isSelected = selectedMode == ThemeMode.LIGHT,
+                modifier = Modifier.width(segmentWidth),
+                onClick = { onModeSelected(ThemeMode.LIGHT) }
+            )
+            ThemeSegmentItem(
+                title = "Dark",
+                icon = Icons.Default.DarkMode,
+                isSelected = selectedMode == ThemeMode.DARK,
+                modifier = Modifier.width(segmentWidth),
+                onClick = { onModeSelected(ThemeMode.DARK) }
+            )
+            ThemeSegmentItem(
+                title = "Auto",
+                icon = Icons.Default.BrightnessAuto,
+                isSelected = selectedMode == ThemeMode.AUTO,
+                modifier = Modifier.width(segmentWidth),
+                onClick = { onModeSelected(ThemeMode.AUTO) }
+            )
+        }
     }
 }
 
@@ -674,33 +708,21 @@ fun ThemeSegmentItem(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val bgModifier = if (isSelected) {
-        Modifier.background(
-            if (FilesTheme.isDark) {
-                Brush.horizontalGradient(
-                    listOf(PurpleContainer, Color(0xFF9333EA))
-                )
-            } else {
-                Brush.horizontalGradient(
-                    listOf(AccentPrimaryLight, AccentAzureLight)
-                )
-            }
-        )
-    } else {
-        Modifier.background(Color.Transparent)
-    }
-
-    val haptics = LocalAppHaptics.current
+    val tint by animateColorAsState(
+        targetValue = if (isSelected) Color.White else FilesTheme.colors.textSecondary,
+        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
+        label = "ThemeSegmentTint"
+    )
 
     Box(
         modifier = modifier
+            .height(36.dp)
             .clip(RoundedCornerShape(8.dp))
-            .then(bgModifier)
-            .clickable {
-                haptics.trigger(HapticType.SEGMENT_SLIDE)
-                onClick()
-            }
-            .padding(vertical = 8.dp),
+            .elasticBounce(
+                targetScale = 0.94f,
+                hapticType = HapticType.SEGMENT_SLIDE,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -710,13 +732,13 @@ fun ThemeSegmentItem(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (isSelected) Color.White else FilesTheme.colors.textSecondary,
+                tint = tint,
                 modifier = Modifier.size(15.dp)
             )
             Text(
                 text = title,
                 fontFamily = OutfitFontFamily,
-                color = if (isSelected) Color.White else FilesTheme.colors.textSecondary,
+                color = tint,
                 fontSize = 11.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
             )
@@ -777,15 +799,19 @@ fun GlassSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val haptics = LocalAppHaptics.current
+    val motion = LocalMotionSensitivity.current
+
     val thumbOffset by animateDpAsState(
         targetValue = if (checked) 22.dp else 2.dp,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = if (motion.isReducedMotion) tween(80) else androidx.compose.animation.core.spring(
+            dampingRatio = 0.68f,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ),
         label = "thumbOffset"
     )
     val trackColor by animateColorAsState(
         targetValue = if (checked) (if (FilesTheme.isDark) PurpleContainer else AccentPrimaryLight) else FilesTheme.colors.settingSwitchTrackOff,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
         label = "trackColor"
     )
 
@@ -800,13 +826,11 @@ fun GlassSwitch(
                 if (checked) (if (FilesTheme.isDark) PurpleContainer.copy(alpha = 0.5f) else AccentPrimaryLight.copy(alpha = 0.5f)) else FilesTheme.colors.settingCardBorder,
                 CircleShape
             )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                haptics.trigger(HapticType.SWITCH_TOGGLE)
-                onCheckedChange(!checked)
-            }
+            .elasticBounce(
+                targetScale = 0.90f,
+                hapticType = HapticType.SWITCH_TOGGLE,
+                onClick = { onCheckedChange(!checked) }
+            )
             .padding(vertical = 3.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -833,12 +857,10 @@ fun HapticPlaygroundChip(
     val haptics = LocalAppHaptics.current
     Box(
         modifier = modifier
+            .elasticBounce(targetScale = 0.90f, hapticType = type, onClick = {})
             .clip(RoundedCornerShape(10.dp))
             .background(if (FilesTheme.isDark) Color(0x18FFFFFF) else Color(0xFFF1F5F9))
             .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(10.dp))
-            .clickable {
-                haptics.trigger(type)
-            }
             .padding(vertical = 10.dp, horizontal = 4.dp),
         contentAlignment = Alignment.Center
     ) {

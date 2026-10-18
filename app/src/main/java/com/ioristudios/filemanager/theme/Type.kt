@@ -16,6 +16,8 @@ val OrbitronFontFamily = FontFamily(
     Font(R.font.orbitron, FontWeight.ExtraBold)
 )
 
+val JetBrainsMonoFontFamily = FontFamily.Monospace
+
 @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
 val OutfitFontFamily = FontFamily(
     Font(

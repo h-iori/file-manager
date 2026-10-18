@@ -210,14 +210,16 @@ fun FilesTheme(
         }
     }
 
-    CompositionLocalProvider(
-        LocalThemeIsDark provides isDark,
-        LocalFilesColors provides filesColors
-    ) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = Typography,
-            content = content
-        )
+    ProvideMotionSensitivity {
+        CompositionLocalProvider(
+            LocalThemeIsDark provides isDark,
+            LocalFilesColors provides filesColors
+        ) {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = Typography,
+                content = content
+            )
+        }
     }
 }

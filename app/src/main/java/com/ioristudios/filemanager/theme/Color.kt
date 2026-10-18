@@ -24,6 +24,7 @@ val ElectricMagenta = Color(0xFFD946EF)
 val ElectricTeal = Color(0xFF2DD4BF)
 val ElectricCoral = Color(0xFFFB7185)
 val ElectricLavender = Color(0xFF818CF8)
+val ElectricAmber = Color(0xFFF59E0B)
 
 // Text
 val TextPrimary = Color(0xFFF8F6FF)

@@ -5,13 +5,29 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.graphicsLayer
+import com.ioristudios.filemanager.theme.LocalMotionSensitivity
+import com.ioristudios.filemanager.theme.MotionTokens
+import com.ioristudios.filemanager.ui.components.elasticBounce
+import com.ioristudios.filemanager.ui.components.staggeredEntrance
+import com.ioristudios.filemanager.ui.components.liquidBorderGlow
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,9 +35,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,14 +88,25 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.ContentScale
+import com.ioristudios.filemanager.ui.components.ApkIconManager
 import com.ioristudios.filemanager.ui.components.FileDetailsModalDialog
 import com.ioristudios.filemanager.ui.components.GlassContextMenu
 import com.ioristudios.filemanager.ui.components.GlassIconButton
+import com.ioristudios.filemanager.ui.components.ArchiveOptionsDialog
+import com.ioristudios.filemanager.ui.components.CompressDialog
+import com.ioristudios.filemanager.ui.directory.RenameDialog
+import com.ioristudios.filemanager.ui.directory.DeleteConfirmDialog
+import com.ioristudios.filemanager.data.ArchiveManager
+import com.ioristudios.filemanager.data.ArchiveType
+import com.ioristudios.filemanager.data.CompressionLevel
+import java.io.File
 import com.ioristudios.filemanager.haptics.HapticType
 import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.ui.components.StorageDonutChart
@@ -113,7 +143,13 @@ import com.ioristudios.filemanager.theme.*
 import com.ioristudios.filemanager.ui.directory.DirectoryScreen
 import com.ioristudios.filemanager.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
-import java.io.File
+import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Usb
+import com.ioristudios.filemanager.data.StorageVolumeInfo
+import com.ioristudios.filemanager.data.StorageVolumeType
+import com.ioristudios.filemanager.ui.components.AppFileOpener
+import com.ioristudios.filemanager.ui.components.AppManagerDialog
+import com.ioristudios.filemanager.ui.search.SearchScreen
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -134,14 +170,21 @@ fun MainScreen(
         }
     }
 
-    // Handle back button for subfolder navigation, files tab, and settings tab return
+    // Handle back button for subfolder navigation, files tab, search tab, and settings tab return
     BackHandler(enabled = selectedTab != NavTab.HOME) {
-        if (selectedTab == NavTab.FILES) {
-            if (!viewModel.navigateUpDirectory()) {
+        when (selectedTab) {
+            NavTab.FILES -> {
+                if (!viewModel.navigateUpDirectory()) {
+                    viewModel.selectTab(NavTab.HOME)
+                }
+            }
+            NavTab.SEARCH -> {
+                viewModel.clearSearch()
                 viewModel.selectTab(NavTab.HOME)
             }
-        } else {
-            viewModel.selectTab(NavTab.HOME)
+            else -> {
+                viewModel.selectTab(NavTab.HOME)
+            }
         }
     }
 
@@ -150,19 +193,64 @@ fun MainScreen(
             .fillMaxSize()
             .background(FilesTheme.colors.bg)
     ) {
-        Crossfade(targetState = selectedTab, label = "TabCrossfade") { currentTab ->
+        val motion = LocalMotionSensitivity.current
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                if (motion.isReducedMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(90))
+                } else {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    if (forward) {
+                        (slideInHorizontally(
+                            initialOffsetX = { fullWidth -> fullWidth / 4 },
+                            animationSpec = MotionTokens.SpringSpatialOffset
+                        ) + fadeIn(tween(180)) + scaleIn(initialScale = 0.96f)) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> -fullWidth / 4 },
+                            animationSpec = MotionTokens.SpringSpatialOffset
+                        ) + fadeOut(tween(150)) + scaleOut(targetScale = 1.04f))
+                    } else {
+                        (slideInHorizontally(
+                            initialOffsetX = { fullWidth -> -fullWidth / 4 },
+                            animationSpec = MotionTokens.SpringSpatialOffset
+                        ) + fadeIn(tween(180)) + scaleIn(initialScale = 1.04f)) togetherWith
+                        (slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> fullWidth / 4 },
+                            animationSpec = MotionTokens.SpringSpatialOffset
+                        ) + fadeOut(tween(150)) + scaleOut(targetScale = 0.96f))
+                    }
+                }
+            },
+            label = "SpatialTabNavigation"
+        ) { currentTab ->
             when (currentTab) {
                 NavTab.HOME -> {
                     HomeScreenContent(
+                        viewModel = viewModel,
                         state = homeState,
                         showMessage = showMessage,
                         onViewAllClick = { viewModel.selectTab(NavTab.FILES) },
-                        onSettingsClick = { viewModel.selectTab(NavTab.SETTINGS) }
+                        onSearchClick = { viewModel.selectTab(NavTab.SEARCH) },
+                        onSettingsClick = { viewModel.selectTab(NavTab.SETTINGS) },
+                        onSelectVolume = { volumeId -> viewModel.selectStorageVolume(volumeId) }
                     )
                 }
                 NavTab.FILES -> {
                     DirectoryScreen(
                         viewModel = viewModel,
+                        showMessage = showMessage,
+                        onSearchClick = { viewModel.selectTab(NavTab.SEARCH) },
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                    )
+                }
+                NavTab.SEARCH -> {
+                    SearchScreen(
+                        viewModel = viewModel,
+                        onBackClick = {
+                            viewModel.clearSearch()
+                            viewModel.selectTab(NavTab.HOME)
+                        },
                         showMessage = showMessage,
                         modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     )
@@ -216,13 +304,21 @@ fun MainScreen(
 
 @Composable
 fun HomeScreenContent(
+    viewModel: MainScreenViewModel,
     state: HomeScreenData,
     showMessage: (String) -> Unit,
     onViewAllClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSearchClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onSelectVolume: (String) -> Unit
 ) {
     val context = LocalContext.current
     var selectedRecentFileForDetails by remember { mutableStateOf<RecentFile?>(null) }
+    var itemToRename by remember { mutableStateOf<RecentFile?>(null) }
+    var itemToDelete by remember { mutableStateOf<RecentFile?>(null) }
+    var itemForCompress by remember { mutableStateOf<RecentFile?>(null) }
+    var archiveItemForOptions by remember { mutableStateOf<RecentFile?>(null) }
+    var showAppManager by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -231,7 +327,7 @@ fun HomeScreenContent(
     ) {
         // App Header
         AppHeader(
-            onSearchClick = { showMessage("Global file search coming soon") },
+            onSearchClick = onSearchClick,
             showMenuButton = false
         )
 
@@ -245,10 +341,13 @@ fun HomeScreenContent(
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
-            // Section 1: Storage Hero Card
+            // Section 1: Storage Hero Card (With live SD Card & USB OTG Switcher if present)
             item {
                 StorageHeroCard(
                     storage = state.storage,
+                    availableVolumes = state.availableVolumes,
+                    selectedVolumeId = state.selectedVolumeId,
+                    onSelectVolume = onSelectVolume,
                     onCardClick = onViewAllClick
                 )
             }
@@ -257,7 +356,13 @@ fun HomeScreenContent(
             item {
                 StorageBreakdownSection(
                     categories = state.categories,
-                    onCategoryClick = { onViewAllClick() },
+                    onCategoryClick = { cat ->
+                        if (cat.title.equals("Apps", ignoreCase = true)) {
+                            showAppManager = true
+                        } else {
+                            onViewAllClick()
+                        }
+                    },
                     onViewAllClick = onViewAllClick
                 )
             }
@@ -277,10 +382,18 @@ fun HomeScreenContent(
                 RecentFilesSection(
                     recentFiles = state.recentFiles,
                     onFileClick = { file ->
-                        openFile(context, file, showMessage)
+                        if (ArchiveManager.isArchive(File(file.path))) {
+                            archiveItemForOptions = file
+                        } else {
+                            AppFileOpener.openFile(context, file.path, file.mimeType, showMessage)
+                        }
                     },
                     onFileOpenClick = { file ->
-                        openFile(context, file, showMessage)
+                        if (ArchiveManager.isArchive(File(file.path))) {
+                            archiveItemForOptions = file
+                        } else {
+                            AppFileOpener.openFile(context, file.path, file.mimeType, showMessage)
+                        }
                     },
                     onFileDetailsClick = { file ->
                         selectedRecentFileForDetails = file
@@ -289,7 +402,31 @@ fun HomeScreenContent(
                         shareFileToSystem(context, file.path, file.mimeType, showMessage)
                     },
                     onFileDeleteClick = { file ->
-                        showMessage("Deleting ${file.name} is restricted in preview")
+                        itemToDelete = file
+                    },
+                    onFileCopyClick = { file ->
+                        viewModel.copyItem(file.path, File(file.path).parent ?: "")
+                        showMessage("Copied to clipboard")
+                    },
+                    onFileCutClick = { file ->
+                        viewModel.cutItem(file.path, File(file.path).parent ?: "")
+                        showMessage("Cut to clipboard")
+                    },
+                    onFileRenameClick = { file ->
+                        itemToRename = file
+                    },
+                    onFileCompressClick = { file ->
+                        itemForCompress = file
+                    },
+                    onFileExtractClick = { file ->
+                        archiveItemForOptions = file
+                    },
+                    onFileTestArchiveClick = { file ->
+                        showMessage("Testing integrity of ${file.name}...")
+                        viewModel.testArchiveIntegrity(file.path) { res ->
+                            res.onSuccess { msg -> showMessage(msg) }
+                                .onFailure { err -> showMessage("Integrity check failed: ${err.message}") }
+                        }
                     },
                     onSeeAllClick = onViewAllClick
                 )
@@ -311,6 +448,108 @@ fun HomeScreenContent(
             dateModifiedMs = file.dateModifiedMs,
             isDirectory = false,
             onDismiss = { selectedRecentFileForDetails = null }
+        )
+    }
+
+    itemToRename?.let { item ->
+        RenameDialog(
+            initialName = item.name,
+            isDirectory = false,
+            onDismiss = { itemToRename = null },
+            onRename = { newName ->
+                itemToRename = null
+                viewModel.renameItem(item.path, newName) { result ->
+                    result.onSuccess {
+                        showMessage("Renamed to \"${it.name}\"")
+                    }.onFailure {
+                        showMessage("Failed: ${it.message}")
+                    }
+                }
+            }
+        )
+    }
+
+    itemToDelete?.let { item ->
+        DeleteConfirmDialog(
+            itemName = item.name,
+            isDirectory = false,
+            onDismiss = { itemToDelete = null },
+            onConfirmDelete = {
+                itemToDelete = null
+                viewModel.deleteItem(item.path) { res ->
+                    if (res.isSuccess) showMessage("Deleted ${item.name}")
+                    else showMessage("Failed to delete")
+                }
+            }
+        )
+    }
+
+    itemForCompress?.let { item ->
+        CompressDialog(
+            initialName = "${item.name}.zip",
+            onDismiss = { itemForCompress = null },
+            onCompress = { archiveName, type, level ->
+                itemForCompress = null
+                val parentDir = File(item.path).parentFile ?: File(item.path)
+                val destFile = File(parentDir, archiveName)
+                showMessage("Compressing ${item.name} to $archiveName...")
+                viewModel.createArchive(listOf(item.path), destFile, type, level) { res ->
+                    res.onSuccess {
+                        showMessage("Created archive \"${it.name}\"")
+                    }.onFailure {
+                        showMessage("Compression failed: ${it.message}")
+                    }
+                }
+            }
+        )
+    }
+
+    archiveItemForOptions?.let { item ->
+        ArchiveOptionsDialog(
+            name = item.name,
+            path = item.path,
+            onDismiss = { archiveItemForOptions = null },
+            onBrowseInPlace = {
+                archiveItemForOptions = null
+                viewModel.openDirectory(item.path)
+                viewModel.selectTab(NavTab.FILES)
+            },
+            onExtractHere = {
+                archiveItemForOptions = null
+                val targetDir = File(item.path).parent ?: ""
+                showMessage("Extracting ${item.name}...")
+                viewModel.extractArchive(item.path, targetDir) { res ->
+                    res.onSuccess { count -> showMessage("Extracted $count files") }
+                        .onFailure { showMessage("Extract failed: ${it.message}") }
+                }
+            },
+            onExtractToFolder = {
+                archiveItemForOptions = null
+                val baseName = item.name.substringBeforeLast('.')
+                val targetDir = File(File(item.path).parentFile, baseName).absolutePath
+                showMessage("Extracting to $baseName...")
+                viewModel.extractArchive(item.path, targetDir) { res ->
+                    res.onSuccess { count -> showMessage("Extracted $count files to $baseName") }
+                        .onFailure { showMessage("Extract failed: ${it.message}") }
+                }
+            },
+            onTestIntegrity = {
+                archiveItemForOptions = null
+                showMessage("Testing integrity of ${item.name}...")
+                viewModel.testArchiveIntegrity(item.path) { res ->
+                    res.onSuccess { showMessage(it) }
+                        .onFailure { showMessage("Integrity check failed: ${it.message}") }
+                }
+            }
+        )
+    }
+
+    // Installed App Manager & APK Extractor Dialog
+    if (showAppManager) {
+        AppManagerDialog(
+            viewModel = viewModel,
+            showMessage = showMessage,
+            onDismiss = { showAppManager = false }
         )
     }
 }
@@ -365,7 +604,8 @@ fun PlaceholderScreen(
 fun AppHeader(
     onSearchClick: () -> Unit,
     showMenuButton: Boolean = false,
-    onMenuClick: () -> Unit = {}
+    onMenuClick: () -> Unit = {},
+    menuContent: (@Composable ColumnScope.(dismiss: () -> Unit) -> Unit)? = null
 ) {
     val transition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by transition.animateFloat(
@@ -490,12 +730,40 @@ fun AppHeader(
                 hapticType = HapticType.CLICK
             )
             if (showMenuButton) {
-                GlassIconButton(
-                    icon = Icons.Outlined.MoreVert,
-                    contentDescription = "More",
-                    onClick = onMenuClick,
-                    hapticType = HapticType.MENU_POP
-                )
+                var menuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    GlassIconButton(
+                        icon = Icons.Outlined.MoreVert,
+                        contentDescription = "More",
+                        onClick = {
+                            if (menuContent != null) {
+                                menuExpanded = true
+                            } else {
+                                onMenuClick()
+                            }
+                        },
+                        hapticType = HapticType.MENU_POP
+                    )
+
+                    if (menuContent != null) {
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                            modifier = Modifier
+                                .width(200.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(FilesTheme.colors.dialogBg)
+                                .border(
+                                    1.dp,
+                                    FilesTheme.colors.cardBorder,
+                                    RoundedCornerShape(16.dp)
+                                )
+                                .padding(vertical = 4.dp)
+                        ) {
+                            menuContent { menuExpanded = false }
+                        }
+                    }
+                }
             }
         }
     }
@@ -504,12 +772,35 @@ fun AppHeader(
 @Composable
 fun StorageHeroCard(
     storage: StorageOverview,
+    availableVolumes: List<StorageVolumeInfo> = emptyList(),
+    selectedVolumeId: String = "internal",
+    onSelectVolume: (String) -> Unit = {},
     onCardClick: () -> Unit
 ) {
     val haptics = LocalAppHaptics.current
+    val currentVolume = availableVolumes.find { it.id == selectedVolumeId } ?: availableVolumes.firstOrNull()
+    val headerTitle = when (currentVolume?.type) {
+        StorageVolumeType.SD_CARD -> "SD Card storage"
+        StorageVolumeType.USB_OTG -> "USB OTG storage"
+        else -> "Internal storage"
+    }
+    val headerBadge = when (currentVolume?.type) {
+        StorageVolumeType.SD_CARD -> "MicroSD"
+        StorageVolumeType.USB_OTG -> "USB 3.0"
+        else -> null
+    }
+    val headerIcon = when (currentVolume?.type) {
+        StorageVolumeType.SD_CARD -> Icons.Default.SdCard
+        StorageVolumeType.USB_OTG -> Icons.Default.Usb
+        else -> Icons.Default.Storage
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .staggeredEntrance(index = 0)
+            .liquidBorderGlow()
+            .elasticBounce(targetScale = 0.94f, hapticType = HapticType.FOLDER_OPEN, onClick = onCardClick)
             .clip(RoundedCornerShape(24.dp))
             .background(
                 Brush.verticalGradient(
@@ -517,14 +808,10 @@ fun StorageHeroCard(
                 )
             )
             .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
-            .clickable {
-                haptics.trigger(HapticType.FOLDER_OPEN)
-                onCardClick()
-            }
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header Row: Title & Chip
+            // Header Row: Title & Optional External Media Chip
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -535,13 +822,13 @@ fun StorageHeroCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Storage,
+                        imageVector = headerIcon,
                         contentDescription = "Storage",
                         tint = FilesTheme.colors.primaryAccent,
                         modifier = Modifier.size(19.dp)
                     )
                     Text(
-                        text = "Internal storage",
+                        text = headerTitle,
                         fontFamily = OutfitFontFamily,
                         color = FilesTheme.colors.textPrimary,
                         fontSize = 17.sp,
@@ -549,20 +836,22 @@ fun StorageHeroCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(FilesTheme.colors.chipBg)
-                        .border(1.dp, FilesTheme.colors.chipBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "NVMe 4.0",
-                        fontFamily = OutfitFontFamily,
-                        color = FilesTheme.colors.textSecondary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                if (headerBadge != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(FilesTheme.colors.chipBg)
+                            .border(1.dp, FilesTheme.colors.chipBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = headerBadge,
+                            fontFamily = OutfitFontFamily,
+                            color = FilesTheme.colors.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -573,6 +862,75 @@ fun StorageHeroCard(
                 color = FilesTheme.colors.textSecondary,
                 fontSize = 12.sp
             )
+
+            // Storage Volumes Switcher (Displayed ONLY if SD Card or USB OTG is present; hidden by default otherwise)
+            if (availableVolumes.size > 1) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (FilesTheme.isDark) Color(0x18FFFFFF) else Color(0x0A000000))
+                        .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    availableVolumes.forEach { vol ->
+                        val isSelected = vol.id == selectedVolumeId
+                        val (vIcon, vLabel) = when (vol.type) {
+                            StorageVolumeType.INTERNAL -> Icons.Default.Storage to "Internal"
+                            StorageVolumeType.SD_CARD -> Icons.Default.SdCard to "SD Card"
+                            StorageVolumeType.USB_OTG -> Icons.Default.Usb to "USB OTG"
+                        }
+
+                        val targetBg = if (isSelected) (if (FilesTheme.isDark) Color(0xFF331A60) else Color(0xFFEDE4FF))
+                                       else Color.Transparent
+                        val animatedBg by animateColorAsState(targetValue = targetBg, animationSpec = tween(MotionTokens.DurationFast), label = "VolBg")
+                        val targetBorderColor = if (isSelected) FilesTheme.colors.primaryAccent.copy(alpha = 0.8f) else Color.Transparent
+                        val animatedBorderColor by animateColorAsState(targetValue = targetBorderColor, animationSpec = tween(MotionTokens.DurationFast), label = "VolBorder")
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .elasticBounce(
+                                    targetScale = 0.94f,
+                                    hapticType = HapticType.SELECTION_NOTCH,
+                                    onClick = { onSelectVolume(vol.id) }
+                                )
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(animatedBg)
+                                .border(
+                                    width = if (isSelected) 1.dp else 0.dp,
+                                    color = animatedBorderColor,
+                                    shape = RoundedCornerShape(9.dp)
+                                )
+                                .padding(vertical = 7.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = vIcon,
+                                    contentDescription = vLabel,
+                                    tint = if (isSelected) FilesTheme.colors.primaryAccent else FilesTheme.colors.textMuted,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = vLabel,
+                                    fontFamily = OutfitFontFamily,
+                                    color = if (isSelected) FilesTheme.colors.textPrimary else FilesTheme.colors.textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -734,15 +1092,18 @@ fun StorageBreakdownSection(
         }
 
         val chunked = categories.chunked(2)
-        chunked.forEach { rowItems ->
+        chunked.forEachIndexed { rowIndex, rowItems ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                rowItems.forEach { item ->
+                rowItems.forEachIndexed { colIndex, item ->
+                    val itemIndex = rowIndex * 2 + colIndex
                     CategoryCard(
                         item = item,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .staggeredEntrance(index = itemIndex + 1),
                         onClick = { onCategoryClick(item) }
                     )
                 }
@@ -885,17 +1246,12 @@ fun CategoryCard(
         }
     }
 
-    val haptics = LocalAppHaptics.current
-
     Box(
         modifier = modifier
+            .elasticBounce(targetScale = 0.94f, hapticType = HapticType.FOLDER_OPEN, onClick = onClick)
             .clip(RoundedCornerShape(18.dp))
             .background(FilesTheme.colors.surface)
             .border(1.dp, FilesTheme.colors.cardBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .clickable {
-                haptics.trigger(HapticType.FOLDER_OPEN)
-                onClick()
-            }
             .padding(14.dp)
     ) {
         Column(
@@ -949,6 +1305,12 @@ fun CategoryCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            val animProgressFraction by animateFloatAsState(
+                targetValue = item.progressFraction,
+                animationSpec = tween(durationMillis = 850, easing = MotionTokens.EaseFluidOut),
+                label = "CategoryProgressFraction"
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -958,7 +1320,7 @@ fun CategoryCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(item.progressFraction)
+                        .fillMaxWidth(animProgressFraction.coerceIn(0.02f, 1f))
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(
@@ -1093,10 +1455,9 @@ fun CleanupRecommendationCard(
                         }
                     }
 
-                    val haptics = LocalAppHaptics.current
-
                     Box(
                         modifier = Modifier
+                            .elasticBounce(targetScale = 0.93f, hapticType = HapticType.HERO_CLEAN_PULSE, onClick = onCleanupClick)
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 Brush.horizontalGradient(
@@ -1104,10 +1465,6 @@ fun CleanupRecommendationCard(
                                 )
                             )
                             .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                            .clickable {
-                                haptics.trigger(HapticType.HERO_CLEAN_PULSE)
-                                onCleanupClick()
-                            }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1144,6 +1501,12 @@ fun RecentFilesSection(
     onFileDetailsClick: (RecentFile) -> Unit,
     onFileShareClick: (RecentFile) -> Unit,
     onFileDeleteClick: (RecentFile) -> Unit,
+    onFileCopyClick: (RecentFile) -> Unit,
+    onFileCutClick: (RecentFile) -> Unit,
+    onFileRenameClick: (RecentFile) -> Unit,
+    onFileCompressClick: (RecentFile) -> Unit,
+    onFileExtractClick: (RecentFile) -> Unit,
+    onFileTestArchiveClick: (RecentFile) -> Unit,
     onSeeAllClick: () -> Unit
 ) {
     Column(
@@ -1163,7 +1526,7 @@ fun RecentFilesSection(
                 fontWeight = FontWeight.Bold
             )
             Row(
-                modifier = Modifier.clickable(onClick = onSeeAllClick),
+                modifier = Modifier.elasticBounce(targetScale = 0.94f, hapticType = HapticType.CLICK, onClick = onSeeAllClick),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -1188,13 +1551,20 @@ fun RecentFilesSection(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             recentFiles.forEach { file ->
+                val isArchive = ArchiveManager.isArchive(File(file.path))
                 RecentFileRow(
                     file = file,
                     onClick = { onFileClick(file) },
                     onOpen = { onFileOpenClick(file) },
                     onDetails = { onFileDetailsClick(file) },
                     onShare = { onFileShareClick(file) },
-                    onDelete = { onFileDeleteClick(file) }
+                    onDelete = { onFileDeleteClick(file) },
+                    onCopy = { onFileCopyClick(file) },
+                    onCut = { onFileCutClick(file) },
+                    onRename = { onFileRenameClick(file) },
+                    onCompress = { onFileCompressClick(file) },
+                    onExtract = if (isArchive) { { onFileExtractClick(file) } } else null,
+                    onTestArchive = if (isArchive) { { onFileTestArchiveClick(file) } } else null
                 )
             }
         }
@@ -1208,7 +1578,13 @@ fun RecentFileRow(
     onOpen: () -> Unit,
     onDetails: () -> Unit,
     onShare: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onCopy: () -> Unit,
+    onCut: () -> Unit,
+    onRename: () -> Unit,
+    onCompress: () -> Unit,
+    onExtract: (() -> Unit)?,
+    onTestArchive: (() -> Unit)?
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -1251,15 +1627,23 @@ fun RecentFileRow(
     }
 
     val haptics = LocalAppHaptics.current
+    val context = LocalContext.current
+    val isApk = file.name.endsWith(".apk", ignoreCase = true)
+    var apkBitmap by remember(file.path) {
+        mutableStateOf(if (isApk) ApkIconManager.getCached(file.path) else null)
+    }
+
+    if (isApk && apkBitmap == null) {
+        LaunchedEffect(file.path) {
+            apkBitmap = ApkIconManager.loadApkIcon(context, file.path)
+        }
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .elasticBounce(targetScale = 0.98f, hapticType = HapticType.CLICK, onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
-            .clickable {
-                haptics.trigger(HapticType.CLICK)
-                onClick()
-            }
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1272,12 +1656,23 @@ fun RecentFileRow(
                 .border(1.dp, iconTint.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp)
-            )
+            if (apkBitmap != null) {
+                Image(
+                    bitmap = apkBitmap!!,
+                    contentDescription = file.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
             if (file.category == FileCategory.IMAGE) {
                 Box(
                     modifier = Modifier
@@ -1334,9 +1729,15 @@ fun RecentFileRow(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
                 onOpen = onOpen,
+                onCopy = onCopy,
+                onCut = onCut,
+                onRename = onRename,
                 onDetails = onDetails,
                 onShare = onShare,
-                onDelete = onDelete
+                onDelete = onDelete,
+                onCompress = onCompress,
+                onExtract = onExtract,
+                onTestArchive = onTestArchive
             )
         }
     }
@@ -1347,48 +1748,82 @@ fun FloatingBottomNav(
     selectedTab: NavTab,
     onTabSelect: (NavTab) -> Unit
 ) {
+    val motion = LocalMotionSensitivity.current
+    val tabs = remember { listOf(NavTab.HOME, NavTab.FILES, NavTab.SHARE, NavTab.SETTINGS) }
+    val selectedIndex = tabs.indexOf(selectedTab).coerceAtLeast(0)
+
+    val tabWidth = 62.dp
+    val tabHeight = 46.dp
+
+    val indicatorOffset by animateDpAsState(
+        targetValue = tabWidth * selectedIndex,
+        animationSpec = if (motion.isReducedMotion) tween(80) else MotionTokens.SpringPillSlide,
+        label = "BottomNavPillOffset"
+    )
+
     Surface(
         color = FilesTheme.colors.bottomNavBg,
         shape = RoundedCornerShape(999.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, FilesTheme.colors.bottomNavBorder),
-        shadowElevation = 12.dp
+        shadowElevation = 14.dp
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            // Destination 1: Home
-            BottomNavTabItem(
-                isActive = selectedTab == NavTab.HOME,
-                icon = Icons.Default.Home,
-                contentDescription = "Home",
-                onClick = { onTabSelect(NavTab.HOME) }
+            // Smooth Sliding Active Pill Indicator
+            Box(
+                modifier = Modifier
+                    .offset(x = indicatorOffset)
+                    .width(tabWidth)
+                    .height(tabHeight)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                FilesTheme.colors.bottomNavActiveBg,
+                                FilesTheme.colors.primaryAccent.copy(alpha = 0.28f)
+                            )
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        FilesTheme.colors.primaryAccent.copy(alpha = 0.5f),
+                        RoundedCornerShape(999.dp)
+                    )
             )
 
-            // Destination 2: Files / Directory Explorer
-            BottomNavTabItem(
-                isActive = selectedTab == NavTab.FILES,
-                icon = Icons.Default.FolderOpen,
-                contentDescription = "Files",
-                onClick = { onTabSelect(NavTab.FILES) }
-            )
+            // Tabs
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEach { tab ->
+                    val isActive = tab == selectedTab
+                    val icon = when (tab) {
+                        NavTab.HOME -> Icons.Default.Home
+                        NavTab.FILES -> Icons.Default.FolderOpen
+                        NavTab.SHARE -> Icons.Default.Share
+                        NavTab.SETTINGS -> Icons.Default.Settings
+                        else -> Icons.Default.Home
+                    }
+                    val label = when (tab) {
+                        NavTab.HOME -> "Home"
+                        NavTab.FILES -> "Files"
+                        NavTab.SHARE -> "Share"
+                        NavTab.SETTINGS -> "Settings"
+                        else -> ""
+                    }
 
-            // Destination 3: Share
-            BottomNavTabItem(
-                isActive = selectedTab == NavTab.SHARE,
-                icon = Icons.Default.Share,
-                contentDescription = "Share",
-                onClick = { onTabSelect(NavTab.SHARE) }
-            )
-
-            // Destination 4: Settings
-            BottomNavTabItem(
-                isActive = selectedTab == NavTab.SETTINGS,
-                icon = Icons.Default.Settings,
-                contentDescription = "Settings",
-                onClick = { onTabSelect(NavTab.SETTINGS) }
-            )
+                    BottomNavTabItem(
+                        isActive = isActive,
+                        icon = icon,
+                        contentDescription = label,
+                        onClick = { onTabSelect(tab) },
+                        modifier = Modifier
+                            .width(tabWidth)
+                            .height(tabHeight)
+                    )
+                }
+            }
         }
     }
 }
@@ -1398,33 +1833,50 @@ fun BottomNavTabItem(
     isActive: Boolean,
     icon: ImageVector,
     contentDescription: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val haptics = LocalAppHaptics.current
-    val handleTabClick = {
-        haptics.trigger(HapticType.NAV_TICK)
-        onClick()
-    }
+    val motion = LocalMotionSensitivity.current
 
-    if (isActive) {
-        Box(
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(FilesTheme.colors.bottomNavActiveBg)
-                .clickable(onClick = handleTabClick)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center
+    val iconScale by animateFloatAsState(
+        targetValue = if (isActive && !motion.isReducedMotion) 1.20f else 1.0f,
+        animationSpec = MotionTokens.SpringBouncyJuicy,
+        label = "BottomNavIconScale"
+    )
+
+    val iconTint by animateColorAsState(
+        targetValue = if (isActive) FilesTheme.colors.bottomNavActiveIcon else FilesTheme.colors.bottomNavInactiveIcon,
+        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
+        label = "BottomNavIconTint"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .elasticBounce(
+                targetScale = 0.88f,
+                hapticType = HapticType.NAV_TICK,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = contentDescription,
-                    tint = FilesTheme.colors.bottomNavActiveIcon,
-                    modifier = Modifier.size(22.dp)
-                )
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = iconTint,
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
+            )
+            if (isActive) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Box(
                     modifier = Modifier
                         .size(4.dp)
@@ -1432,15 +1884,6 @@ fun BottomNavTabItem(
                         .background(FilesTheme.colors.bottomNavActiveIcon)
                 )
             }
-        }
-    } else {
-        IconButton(onClick = handleTabClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = FilesTheme.colors.bottomNavInactiveIcon,
-                modifier = Modifier.size(22.dp)
-            )
         }
     }
 }
@@ -1466,30 +1909,5 @@ private fun formatShortBytes(bytes: Long): String {
 }
 
 private fun openFile(context: Context, file: RecentFile, showMessage: (String) -> Unit) {
-    try {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-
-        val contentUri = if (file.path.isNotBlank()) {
-            val localFile = File(file.path)
-            if (localFile.exists()) {
-                FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    localFile
-                )
-            } else file.uri
-        } else file.uri
-
-        if (contentUri != Uri.EMPTY) {
-            val mime = if (file.mimeType.isNotBlank()) file.mimeType else "*/*"
-            intent.setDataAndType(contentUri, mime)
-            context.startActivity(intent)
-        } else {
-            showMessage("File: ${file.name}")
-        }
-    } catch (e: Exception) {
-        showMessage("Cannot open ${file.name}: ${e.message}")
-    }
+    AppFileOpener.openFile(context, file.path, file.mimeType, showMessage)
 }
