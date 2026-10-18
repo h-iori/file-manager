@@ -160,9 +160,15 @@ object FileOperationsManager {
             return@withContext Result.failure(IllegalArgumentException("Invalid file name"))
         }
 
+        // Enterprise resilience: if name hasn't changed at all, treat as successful no-op
+        if (file.name == trimmed) {
+            return@withContext Result.success(file)
+        }
+
         val target = File(file.parentFile, trimmed)
-        if (target.exists()) {
-            return@withContext Result.failure(FileAlreadyExistsException(target, null, "A file with this name already exists"))
+        // If target exists and isn't the same file (supports case changes on case-insensitive file systems)
+        if (target.exists() && target.canonicalPath != file.canonicalPath) {
+            return@withContext Result.failure(FileAlreadyExistsException(target, null, "A file or folder with this name already exists"))
         }
 
         val success = file.renameTo(target)
@@ -179,11 +185,7 @@ object FileOperationsManager {
             return@withContext Result.failure(IllegalArgumentException("Invalid folder name"))
         }
 
-        val target = File(parentDir, trimmed)
-        if (target.exists()) {
-            return@withContext Result.failure(FileAlreadyExistsException(target, null, "Folder already exists"))
-        }
-
+        val target = NameConflictResolver.resolveUniqueFile(parentDir, trimmed, isDirectory = true)
         val created = target.mkdirs()
         if (created) {
             Result.success(target)
@@ -198,11 +200,7 @@ object FileOperationsManager {
             return@withContext Result.failure(IllegalArgumentException("Invalid file name"))
         }
 
-        val target = File(parentDir, trimmed)
-        if (target.exists()) {
-            return@withContext Result.failure(FileAlreadyExistsException(target, null, "File already exists"))
-        }
-
+        val target = NameConflictResolver.resolveUniqueFile(parentDir, trimmed, isDirectory = false)
         val created = try {
             target.createNewFile()
         } catch (e: Exception) {
@@ -260,16 +258,7 @@ object FileOperationsManager {
     }
 
     private fun autoRenameCandidate(src: File, targetDir: File): File {
-        val baseName = src.nameWithoutExtension
-        val ext = src.extension
-        var counter = 1
-        var candidate: File
-        do {
-            val candidateName = if (ext.isNotEmpty()) "$baseName ($counter).$ext" else "$baseName ($counter)"
-            candidate = File(targetDir, candidateName)
-            counter++
-        } while (candidate.exists())
-        return candidate
+        return NameConflictResolver.resolveUniqueFile(targetDir, src.name, src.isDirectory)
     }
 
     private fun copyItem(

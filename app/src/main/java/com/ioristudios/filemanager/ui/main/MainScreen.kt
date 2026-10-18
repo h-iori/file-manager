@@ -474,9 +474,13 @@ fun HomeScreenContent(
     }
 
     itemToRename?.let { item ->
+        val siblings = remember(item.path) {
+            java.io.File(item.path).parentFile?.list()?.toSet() ?: emptySet()
+        }
         RenameDialog(
             initialName = item.name,
             isDirectory = false,
+            existingNames = siblings,
             onDismiss = { itemToRename = null },
             onRename = { newName ->
                 itemToRename = null

@@ -172,7 +172,7 @@ class FileSearchEngine(private val context: Context) {
                 }
             }
 
-            cachedIndex = items
+            cachedIndex = items.toList()
             lastIndexedRoot = rootPath
             lastIndexTimestamp = System.currentTimeMillis()
             android.util.Log.i("FileSearchEngine", "buildIndex finished: root='$rootPath' indexed ${items.size} items")

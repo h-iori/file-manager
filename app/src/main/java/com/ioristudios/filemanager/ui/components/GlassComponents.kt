@@ -1774,6 +1774,7 @@ fun EnterpriseDeleteConfirmDialog(
 fun EnterpriseRenameDialog(
     initialName: String,
     isDirectory: Boolean,
+    existingNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onRename: (String) -> Unit
 ) {
@@ -1795,11 +1796,15 @@ fun EnterpriseRenameDialog(
     val forbiddenChars = listOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
     val trimmedName = textFieldValue.text.trim()
     val containsForbidden = forbiddenChars.firstOrNull { trimmedName.contains(it) }
+    val isDuplicate = existingNames.any {
+        it.equals(trimmedName, ignoreCase = true) && !it.equals(initialName, ignoreCase = true)
+    }
 
     val errorMessage = when {
         trimmedName.isEmpty() -> "Name cannot be empty"
         containsForbidden != null -> "Name cannot contain forbidden character: $containsForbidden"
         trimmedName.startsWith(".") && isDirectory -> "Folder name cannot start with a dot"
+        isDuplicate -> "An item named \"$trimmedName\" already exists"
         else -> null
     }
 

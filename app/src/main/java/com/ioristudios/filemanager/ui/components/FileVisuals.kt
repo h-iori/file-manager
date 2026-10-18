@@ -554,7 +554,9 @@ fun FileIconSquircle(
     size: Dp = 46.dp
 ) {
     val isDark = FilesTheme.isDark
-    val visuals = FileVisualsManager.getItemVisuals(item, isDark)
+    val visuals = remember(item.visualType, item.name, isDark) {
+        FileVisualsManager.getItemVisuals(item, isDark)
+    }
     val context = LocalContext.current
 
     val isApk = !item.isDirectory && (item.visualType == DirectoryVisualType.FILE_APK || item.name.endsWith(".apk", ignoreCase = true))

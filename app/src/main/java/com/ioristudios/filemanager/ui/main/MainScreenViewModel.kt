@@ -82,6 +82,24 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
         return repository.navigateUp()
     }
 
+    // Directory Scroll State Restoration Cache
+    // Maps directory path -> Pair(firstVisibleItemIndex, firstVisibleItemScrollOffset)
+    private val directoryScrollPositions = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+    fun saveDirectoryScrollPosition(path: String, index: Int, offset: Int) {
+        if (path.isNotBlank()) {
+            directoryScrollPositions[path] = Pair(index, offset)
+        }
+    }
+
+    fun getDirectoryScrollPosition(path: String): Pair<Int, Int>? {
+        return if (path.isNotBlank()) directoryScrollPositions[path] else null
+    }
+
+    fun clearDirectoryScrollPosition(path: String) {
+        directoryScrollPositions.remove(path)
+    }
+
     fun setSortOption(sort: SortOption) {
         repository.setSortOption(sort)
     }

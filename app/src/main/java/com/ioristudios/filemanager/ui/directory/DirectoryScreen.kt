@@ -39,6 +39,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -106,6 +108,7 @@ import com.ioristudios.filemanager.ui.components.shareFileToSystem
 import com.ioristudios.filemanager.data.ArchiveManager
 import com.ioristudios.filemanager.data.ArchiveType
 import com.ioristudios.filemanager.data.CompressionLevel
+import com.ioristudios.filemanager.data.NameConflictResolver
 import com.ioristudios.filemanager.ui.components.ArchiveOptionsDialog
 import com.ioristudios.filemanager.ui.components.CompressDialog
 import androidx.activity.compose.BackHandler
@@ -114,11 +117,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.ioristudios.filemanager.ui.components.SelectionTopBar
 import com.ioristudios.filemanager.ui.components.SelectionCheckbox
 import com.ioristudios.filemanager.ui.components.BatchDeleteItemInfo
@@ -195,8 +202,12 @@ fun DirectoryScreen(
         selectedPaths = emptySet()
     }
 
-    BackHandler(enabled = isSelectionMode) {
-        selectedPaths = emptySet()
+    BackHandler(enabled = isSelectionMode || state.breadcrumbs.isNotEmpty()) {
+        if (isSelectionMode) {
+            selectedPaths = emptySet()
+        } else if (state.breadcrumbs.isNotEmpty()) {
+            viewModel.navigateUpDirectory()
+        }
     }
 
     Box(
@@ -325,8 +336,12 @@ fun DirectoryScreen(
             ) {
                 BreadcrumbsBar(
                     state = state,
-                    onBreadcrumbClick = { path -> viewModel.openDirectory(path) },
-                    onBackClick = { viewModel.navigateUpDirectory() }
+                    onBreadcrumbClick = { path ->
+                        viewModel.openDirectory(path)
+                    },
+                    onBackClick = {
+                        viewModel.navigateUpDirectory()
+                    }
                 )
             }
 
@@ -452,48 +467,7 @@ fun DirectoryScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                AnimatedContent(
-                    targetState = state.currentPath,
-                    transitionSpec = {
-                        if (motion.isReducedMotion) {
-                            fadeIn(tween(90)) togetherWith fadeOut(tween(90))
-                        } else {
-                            val isNavigatingDeeper = targetState.length > initialState.length
-                            if (isNavigatingDeeper) {
-                                (slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> (fullWidth * 0.75f).toInt() },
-                                    animationSpec = MotionTokens.SpringSpatialOffset
-                                ) + scaleIn(
-                                    initialScale = 0.96f,
-                                    animationSpec = MotionTokens.SpringSpatialHierarchy
-                                ) + fadeIn(
-                                    animationSpec = tween(180)
-                                )) togetherWith (slideOutHorizontally(
-                                    targetOffsetX = { fullWidth -> (-fullWidth * 0.25f).toInt() },
-                                    animationSpec = MotionTokens.SpringSpatialOffset
-                                ) + fadeOut(
-                                    animationSpec = tween(150)
-                                ))
-                            } else {
-                                (slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> (-fullWidth * 0.25f).toInt() },
-                                    animationSpec = MotionTokens.SpringSpatialOffset
-                                ) + fadeIn(
-                                    animationSpec = tween(180)
-                                )) togetherWith (slideOutHorizontally(
-                                    targetOffsetX = { fullWidth -> (fullWidth * 0.75f).toInt() },
-                                    animationSpec = MotionTokens.SpringSpatialOffset
-                                ) + scaleOut(
-                                    targetScale = 0.96f,
-                                    animationSpec = MotionTokens.SpringSpatialHierarchy
-                                ) + fadeOut(
-                                    animationSpec = tween(150)
-                                ))
-                            }
-                        }
-                    },
-                    label = "SpatialDirectoryTransition"
-                ) { _ ->
+
                     if (state.isLoading) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -530,31 +504,61 @@ fun DirectoryScreen(
                             }
                         }
                     } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            item { Spacer(modifier = Modifier.height(2.dp)) }
+                        key(state.currentPath) {
+                            val currentPath = state.currentPath
+                            val savedPosition = remember(currentPath) {
+                                viewModel.getDirectoryScrollPosition(currentPath)
+                            }
+                            val initialIndex = if (savedPosition != null && state.items.isNotEmpty()) {
+                                savedPosition.first.coerceIn(0, state.items.lastIndex)
+                            } else {
+                                0
+                            }
+                            val initialOffset = savedPosition?.second ?: 0
 
-                            itemsIndexed(state.items, key = { _, item -> item.path }) { index, item ->
+                            val listState = rememberLazyListState(
+                                initialFirstVisibleItemIndex = initialIndex,
+                                initialFirstVisibleItemScrollOffset = initialOffset
+                            )
+
+                            // Continuously save scroll position during user interaction
+                            LaunchedEffect(listState, currentPath) {
+                                snapshotFlow {
+                                    Triple(
+                                        listState.firstVisibleItemIndex,
+                                        listState.firstVisibleItemScrollOffset,
+                                        currentPath
+                                    )
+                                }
+                                .distinctUntilChanged()
+                                .collect { (index, offset, path) ->
+                                    if (path.isNotEmpty() && state.items.isNotEmpty()) {
+                                        viewModel.saveDirectoryScrollPosition(path, index, offset)
+                                    }
+                                }
+                            }
+
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                item { Spacer(modifier = Modifier.height(2.dp)) }
+
+                                itemsIndexed(
+                                    items = state.items,
+                                    key = { _, item -> item.path },
+                                    contentType = { _, item -> if (item.isDirectory) 0 else 1 }
+                                ) { index, item ->
                                 val isSelected = item.path in selectedPaths
 
-                                Box(
-                                    modifier = Modifier
-                                        .animateItem(
-                                            fadeInSpec = if (motion.isReducedMotion) null else tween(durationMillis = MotionTokens.DurationFast),
-                                            fadeOutSpec = if (motion.isReducedMotion) null else tween(durationMillis = 140),
-                                            placementSpec = if (motion.isReducedMotion) snap() else MotionTokens.SpringItemReorder
-                                        )
-                                        .staggeredEntrance(index = index)
-                                ) {
-                                    DirectoryItemRow(
-                                        item = item,
-                                        showFileExtensions = settingsState.showFileExtensions,
-                                        isSelectionMode = isSelectionMode,
-                                        isSelected = isSelected,
+                                DirectoryItemRow(
+                                    item = item,
+                                    showFileExtensions = settingsState.showFileExtensions,
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
                                         onToggleSelect = {
                                             selectedPaths = if (isSelected) {
                                                 selectedPaths - item.path
@@ -575,6 +579,11 @@ fun DirectoryScreen(
                                         },
                                         onClick = {
                                             if (item.isDirectory) {
+                                                viewModel.saveDirectoryScrollPosition(
+                                                    currentPath,
+                                                    listState.firstVisibleItemIndex,
+                                                    listState.firstVisibleItemScrollOffset
+                                                )
                                                 viewModel.openDirectory(item.path)
                                             } else if (item.path.contains("::")) {
                                                 viewModel.extractAndOpenArchiveItem(context, item.path, item.mimeType, showMessage)
@@ -586,6 +595,11 @@ fun DirectoryScreen(
                                         },
                                         onOpen = {
                                             if (item.isDirectory) {
+                                                viewModel.saveDirectoryScrollPosition(
+                                                    currentPath,
+                                                    listState.firstVisibleItemIndex,
+                                                    listState.firstVisibleItemScrollOffset
+                                                )
                                                 viewModel.openDirectory(item.path)
                                             } else if (item.path.contains("::")) {
                                                 viewModel.extractAndOpenArchiveItem(context, item.path, item.mimeType, showMessage)
@@ -648,7 +662,6 @@ fun DirectoryScreen(
                                             }
                                         } else null
                                     )
-                                }
                             }
 
                             item { Spacer(modifier = Modifier.height(96.dp)) }
@@ -748,6 +761,7 @@ fun DirectoryScreen(
     itemToCompress?.let { item ->
         CompressDialog(
             initialName = "${item.name}.zip",
+            existingNames = state.items.map { it.name }.toSet(),
             onDismiss = { itemToCompress = null },
             onCompress = { name, format, level ->
                 itemToCompress = null
@@ -788,6 +802,7 @@ fun DirectoryScreen(
     // New Folder Dialog
     if (showNewFolderDialog) {
         NewFolderDialog(
+            existingNames = state.items.map { it.name }.toSet(),
             onDismiss = { showNewFolderDialog = false },
             onCreate = { folderName ->
                 showNewFolderDialog = false
@@ -805,6 +820,7 @@ fun DirectoryScreen(
     // New File Dialog
     if (showNewFileDialog) {
         NewFileDialog(
+            existingNames = state.items.map { it.name }.toSet(),
             onDismiss = { showNewFileDialog = false },
             onCreate = { fileName ->
                 showNewFileDialog = false
@@ -824,6 +840,7 @@ fun DirectoryScreen(
         EnterpriseRenameDialog(
             initialName = item.name,
             isDirectory = item.isDirectory,
+            existingNames = state.items.map { it.name }.toSet(),
             onDismiss = { itemToRename = null },
             onRename = { newName ->
                 itemToRename = null
@@ -908,6 +925,7 @@ fun DirectoryScreen(
         }
         CompressDialog(
             initialName = defaultArchiveName,
+            existingNames = state.items.map { it.name }.toSet(),
             onDismiss = { showBatchCompressDialog = false },
             onCompress = { name, format, level ->
                 showBatchCompressDialog = false
@@ -1053,26 +1071,27 @@ fun DirectoryItemRow(
     } else {
         FilesTheme.colors.surface
     }
-    val animatedBg by animateColorAsState(
-        targetValue = targetBg,
-        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
-        label = "RowBgColor"
-    )
     val targetBorder = if (isSelected) Color(0xFFC084FC) else FilesTheme.colors.cardBorder.copy(alpha = 0.5f)
-    val animatedBorder by animateColorAsState(
-        targetValue = targetBorder,
-        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
-        label = "RowBorderColor"
-    )
+
+    val rowBg = if (isSelectionMode) {
+        animateColorAsState(targetValue = targetBg, animationSpec = tween(durationMillis = 80), label = "RowBg").value
+    } else {
+        targetBg
+    }
+    val rowBorder = if (isSelectionMode) {
+        animateColorAsState(targetValue = targetBorder, animationSpec = tween(durationMillis = 80), label = "RowBorder").value
+    } else {
+        targetBorder
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(animatedBg)
+            .background(rowBg)
             .border(
                 if (isSelected) 1.5.dp else 1.dp,
-                animatedBorder,
+                rowBorder,
                 RoundedCornerShape(18.dp)
             )
             .combinedClickable(
@@ -1451,10 +1470,16 @@ fun GlassDialogTextField(
 
 @Composable
 fun NewFolderDialog(
+    existingNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit
 ) {
-    var folderName by remember { mutableStateOf("New Folder") }
+    val suggestedName = remember(existingNames) {
+        NameConflictResolver.suggestAvailableName("New Folder", isDirectory = true, existingNames = existingNames)
+    }
+    var folderName by remember(suggestedName) { mutableStateOf(suggestedName) }
+    val trimmed = folderName.trim()
+    val isDuplicate = existingNames.any { it.equals(trimmed, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1505,6 +1530,25 @@ fun NewFolderDialog(
                     onValueChange = { folderName = it },
                     placeholder = "Folder name"
                 )
+                if (isDuplicate) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Name exists. Will create as \"${NameConflictResolver.suggestAvailableName(trimmed, true, existingNames)}\".",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 11.5.sp,
+                            fontFamily = OutfitFontFamily
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1516,9 +1560,13 @@ fun NewFolderDialog(
                 fontFamily = OutfitFontFamily,
                 modifier = Modifier
                     .elasticBounce(targetScale = 0.92f) {
-                        val trimmed = folderName.trim()
                         if (trimmed.isNotEmpty()) {
-                            onCreate(trimmed)
+                            val resolved = if (isDuplicate) {
+                                NameConflictResolver.suggestAvailableName(trimmed, true, existingNames)
+                            } else {
+                                trimmed
+                            }
+                            onCreate(resolved)
                         }
                     }
                     .clip(RoundedCornerShape(8.dp))
@@ -1542,10 +1590,16 @@ fun NewFolderDialog(
 
 @Composable
 fun NewFileDialog(
+    existingNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit
 ) {
-    var fileName by remember { mutableStateOf("new_file.txt") }
+    val suggestedName = remember(existingNames) {
+        NameConflictResolver.suggestAvailableName("new_file.txt", isDirectory = false, existingNames = existingNames)
+    }
+    var fileName by remember(suggestedName) { mutableStateOf(suggestedName) }
+    val trimmed = fileName.trim()
+    val isDuplicate = existingNames.any { it.equals(trimmed, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1596,6 +1650,25 @@ fun NewFileDialog(
                     onValueChange = { fileName = it },
                     placeholder = "e.g. notes.txt"
                 )
+                if (isDuplicate) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Name exists. Will create as \"${NameConflictResolver.suggestAvailableName(trimmed, false, existingNames)}\".",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 11.5.sp,
+                            fontFamily = OutfitFontFamily
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1607,9 +1680,13 @@ fun NewFileDialog(
                 fontFamily = OutfitFontFamily,
                 modifier = Modifier
                     .elasticBounce(targetScale = 0.92f) {
-                        val trimmed = fileName.trim()
                         if (trimmed.isNotEmpty()) {
-                            onCreate(trimmed)
+                            val resolved = if (isDuplicate) {
+                                NameConflictResolver.suggestAvailableName(trimmed, false, existingNames)
+                            } else {
+                                trimmed
+                            }
+                            onCreate(resolved)
                         }
                     }
                     .clip(RoundedCornerShape(8.dp))
@@ -1635,94 +1712,16 @@ fun NewFileDialog(
 fun RenameDialog(
     initialName: String,
     isDirectory: Boolean,
+    existingNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onRename: (String) -> Unit
 ) {
-    var newName by remember { mutableStateOf(initialName) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = FilesTheme.colors.dialogBg,
-        shape = RoundedCornerShape(24.dp),
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF9333EA).copy(alpha = 0.25f))
-                        .border(1.dp, FilesTheme.colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DriveFileRenameOutline,
-                        contentDescription = null,
-                        tint = FilesTheme.colors.primaryAccent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Text(
-                    text = if (isDirectory) "Rename Folder" else "Rename File",
-                    fontFamily = OutfitFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = FilesTheme.colors.textPrimary
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Enter a new name:",
-                    color = FilesTheme.colors.textSecondary,
-                    fontSize = 13.sp,
-                    fontFamily = OutfitFontFamily
-                )
-                GlassDialogTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    placeholder = "Name"
-                )
-            }
-        },
-        confirmButton = {
-            Text(
-                text = "Rename",
-                color = FilesTheme.colors.primaryAccent,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                fontFamily = OutfitFontFamily,
-                modifier = Modifier
-                    .elasticBounce(targetScale = 0.92f) {
-                        val trimmed = newName.trim()
-                        if (trimmed.isNotEmpty() && trimmed != initialName) {
-                            onRename(trimmed)
-                        } else if (trimmed == initialName) {
-                            onDismiss()
-                        }
-                    }
-                    .clip(RoundedCornerShape(8.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            )
-        },
-        dismissButton = {
-            Text(
-                text = "Cancel",
-                color = FilesTheme.colors.textSecondary,
-                fontSize = 14.sp,
-                fontFamily = OutfitFontFamily,
-                modifier = Modifier
-                    .elasticBounce(targetScale = 0.92f, onClick = onDismiss)
-                    .clip(RoundedCornerShape(8.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            )
-        }
+    EnterpriseRenameDialog(
+        initialName = initialName,
+        isDirectory = isDirectory,
+        existingNames = existingNames,
+        onDismiss = onDismiss,
+        onRename = onRename
     )
 }
 

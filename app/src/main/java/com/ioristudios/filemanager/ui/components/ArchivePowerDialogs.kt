@@ -37,10 +37,12 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Unarchive
+import com.ioristudios.filemanager.data.NameConflictResolver
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -284,13 +286,20 @@ fun ArchiveOptionTile(
 @Composable
 fun CompressDialog(
     initialName: String,
+    existingNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onCompress: (String, ArchiveType, CompressionLevel) -> Unit
 ) {
-    var archiveName by remember { mutableStateOf(if (initialName.endsWith(".zip")) initialName else "$initialName.zip") }
+    val rawDefault = if (initialName.endsWith(".zip")) initialName else "$initialName.zip"
+    val suggestedInitial = remember(existingNames) {
+        NameConflictResolver.suggestAvailableName(rawDefault, isDirectory = false, existingNames = existingNames)
+    }
+    var archiveName by remember(suggestedInitial) { mutableStateOf(suggestedInitial) }
     var selectedFormat by remember { mutableStateOf(ArchiveType.ZIP) }
     var selectedLevel by remember { mutableStateOf(CompressionLevel.NORMAL) }
     val haptics = LocalAppHaptics.current
+    val trimmed = archiveName.trim()
+    val isDuplicate = existingNames.any { it.equals(trimmed, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -344,6 +353,26 @@ fun CompressDialog(
                     onValueChange = { archiveName = it },
                     placeholder = "archive_name.zip"
                 )
+
+                if (isDuplicate) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Archive exists. Will save as \"${NameConflictResolver.suggestAvailableName(trimmed, false, existingNames)}\".",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 11.5.sp,
+                            fontFamily = OutfitFontFamily
+                        )
+                    }
+                }
 
                 // Format Selector (ZIP vs TAR)
                 Text(
@@ -453,9 +482,13 @@ fun CompressDialog(
                 fontFamily = OutfitFontFamily,
                 modifier = Modifier
                     .elasticBounce(targetScale = 0.92f) {
-                        val trimmed = archiveName.trim()
                         if (trimmed.isNotEmpty()) {
-                            onCompress(trimmed, selectedFormat, selectedLevel)
+                            val resolved = if (isDuplicate) {
+                                NameConflictResolver.suggestAvailableName(trimmed, false, existingNames)
+                            } else {
+                                trimmed
+                            }
+                            onCompress(resolved, selectedFormat, selectedLevel)
                         }
                     }
                     .clip(RoundedCornerShape(8.dp))

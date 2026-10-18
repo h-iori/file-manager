@@ -518,19 +518,14 @@ fun SearchScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    itemsIndexed(searchState.results, key = { _, item -> item.path }) { index, item ->
+                    itemsIndexed(
+                        items = searchState.results,
+                        key = { _, item -> item.path },
+                        contentType = { _, item -> if (item.isDirectory) 0 else 1 }
+                    ) { index, item ->
                         val isSelected = item.path in selectedPaths
 
-                        Box(
-                            modifier = Modifier
-                                .animateItem(
-                                    fadeInSpec = if (motion.isReducedMotion) null else tween(durationMillis = MotionTokens.DurationFast),
-                                    fadeOutSpec = if (motion.isReducedMotion) null else tween(durationMillis = 140),
-                                    placementSpec = if (motion.isReducedMotion) snap() else MotionTokens.SpringItemReorder
-                                )
-                                .staggeredEntrance(index = index)
-                        ) {
-                            SearchResultRow(
+                        SearchResultRow(
                                 item = item,
                                 query = searchState.query,
                                 isSelectionMode = isSelectionMode,
@@ -599,7 +594,6 @@ fun SearchScreen(
                                     }
                                 } else null
                             )
-                        }
                     }
 
                     item { Spacer(modifier = Modifier.height(32.dp)) }
@@ -621,9 +615,13 @@ fun SearchScreen(
     }
 
     itemToRename?.let { item ->
+        val siblings = remember(item.path) {
+            java.io.File(item.path).parentFile?.list()?.toSet() ?: emptySet()
+        }
         EnterpriseRenameDialog(
             initialName = item.name,
             isDirectory = item.isDirectory,
+            existingNames = siblings,
             onDismiss = { itemToRename = null },
             onRename = { newName ->
                 itemToRename = null
@@ -890,26 +888,26 @@ fun SearchResultRow(
     }
 
     val targetBg = if (isSelected) Color(0xFF2C1345) else Color(0xFF160F29)
-    val animatedBg by animateColorAsState(
-        targetValue = targetBg,
-        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
-        label = "SearchRowBg"
-    )
     val targetBorderColor = if (isSelected) Color(0xFFC084FC) else Color(0x30A855F7)
-    val animatedBorderColor by animateColorAsState(
-        targetValue = targetBorderColor,
-        animationSpec = MotionTokens.resolveTween(durationMillis = MotionTokens.DurationFast),
-        label = "SearchRowBorder"
-    )
+    val rowBg = if (isSelectionMode) {
+        animateColorAsState(targetValue = targetBg, animationSpec = tween(durationMillis = 80), label = "SearchRowBg").value
+    } else {
+        targetBg
+    }
+    val rowBorderColor = if (isSelectionMode) {
+        animateColorAsState(targetValue = targetBorderColor, animationSpec = tween(durationMillis = 80), label = "SearchRowBorder").value
+    } else {
+        targetBorderColor
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(animatedBg)
+            .background(rowBg)
             .border(
                 if (isSelected) 1.5.dp else 1.dp,
-                animatedBorderColor,
+                rowBorderColor,
                 RoundedCornerShape(16.dp)
             )
             .combinedClickable(

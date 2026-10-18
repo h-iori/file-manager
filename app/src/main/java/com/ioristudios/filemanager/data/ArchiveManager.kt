@@ -281,19 +281,24 @@ object ArchiveManager {
             while (entries.hasMoreElements()) {
                 token.checkPauseAndCancel()
                 val entry = entries.nextElement()
-                val outFile = File(targetDir, entry.name)
+                val destCandidate = File(targetDir, entry.name)
 
                 // Guard against Zip Slip vulnerability
-                if (!outFile.canonicalPath.startsWith(targetDir.canonicalPath)) {
+                if (!destCandidate.canonicalPath.startsWith(targetDir.canonicalPath)) {
                     continue
                 }
 
                 if (entry.isDirectory) {
-                    if (!outFile.exists()) {
-                        outFile.mkdirs()
-                        token.trackCreatedItem(outFile)
+                    if (!destCandidate.exists()) {
+                        destCandidate.mkdirs()
+                        token.trackCreatedItem(destCandidate)
                     }
                 } else {
+                    val outFile = if (destCandidate.exists()) {
+                        NameConflictResolver.resolveUniqueFile(destCandidate.parentFile ?: targetDir, destCandidate.name, isDirectory = false)
+                    } else {
+                        destCandidate
+                    }
                     outFile.parentFile?.let { p ->
                         if (!p.exists()) {
                             p.mkdirs()
@@ -344,20 +349,25 @@ object ArchiveManager {
             var entry: TarArchiveEntry? = tarIn.nextEntry
             while (entry != null) {
                 token.checkPauseAndCancel()
-                val outFile = File(targetDir, entry.name)
+                val destCandidate = File(targetDir, entry.name)
 
                 // Guard against Zip Slip vulnerability
-                if (!outFile.canonicalPath.startsWith(targetDir.canonicalPath)) {
+                if (!destCandidate.canonicalPath.startsWith(targetDir.canonicalPath)) {
                     entry = tarIn.nextEntry
                     continue
                 }
 
                 if (entry.isDirectory) {
-                    if (!outFile.exists()) {
-                        outFile.mkdirs()
-                        token.trackCreatedItem(outFile)
+                    if (!destCandidate.exists()) {
+                        destCandidate.mkdirs()
+                        token.trackCreatedItem(destCandidate)
                     }
                 } else {
+                    val outFile = if (destCandidate.exists()) {
+                        NameConflictResolver.resolveUniqueFile(destCandidate.parentFile ?: targetDir, destCandidate.name, isDirectory = false)
+                    } else {
+                        destCandidate
+                    }
                     outFile.parentFile?.let { p ->
                         if (!p.exists()) {
                             p.mkdirs()
@@ -431,8 +441,13 @@ object ArchiveManager {
         token: CancellablePauseableToken
     ): Result<File> = withContext(Dispatchers.IO) {
         return@withContext try {
-            destinationFile.parentFile?.mkdirs()
-            token.trackCreatedItem(destinationFile)
+            val targetFile = if (destinationFile.exists()) {
+                NameConflictResolver.resolveUniqueFile(destinationFile.parentFile ?: File("."), destinationFile.name, isDirectory = false)
+            } else {
+                destinationFile
+            }
+            targetFile.parentFile?.mkdirs()
+            token.trackCreatedItem(targetFile)
 
             val allFiles = mutableListOf<Pair<File, String>>()
             var totalBytes = 0L
@@ -455,7 +470,7 @@ object ArchiveManager {
             val buffer = ByteArray(BUFFER_SIZE)
 
             if (format == ArchiveType.ZIP) {
-                ZipOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { zipOut ->
+                ZipOutputStream(BufferedOutputStream(FileOutputStream(targetFile))).use { zipOut ->
                     zipOut.setLevel(level.level)
                     for ((file, pathInZip) in allFiles) {
                         token.checkPauseAndCancel()
@@ -483,7 +498,7 @@ object ArchiveManager {
                     }
                 }
             } else {
-                TarArchiveOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { tarOut ->
+                TarArchiveOutputStream(BufferedOutputStream(FileOutputStream(targetFile))).use { tarOut ->
                     for ((file, pathInTar) in allFiles) {
                         token.checkPauseAndCancel()
                         val entry = TarArchiveEntry(file, pathInTar)
@@ -510,9 +525,9 @@ object ArchiveManager {
                 }
             }
 
-            MediaStoreNotifier.scanFile(context, destinationFile.absolutePath)
+            MediaStoreNotifier.scanFile(context, targetFile.absolutePath)
             FileOperationController.completeSuccess()
-            Result.success(destinationFile)
+            Result.success(targetFile)
         } catch (e: CancellationException) {
             token.rollback()
             FileOperationController.cancel()
