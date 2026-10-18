@@ -1,12 +1,13 @@
 package com.ioristudios.filemanager.data
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -18,6 +19,7 @@ import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import kotlin.coroutines.cancellation.CancellationException
 
 enum class ArchiveType {
     ZIP,
@@ -36,6 +38,8 @@ enum class CompressionLevel(val level: Int, val label: String) {
 }
 
 object ArchiveManager {
+
+    private const val BUFFER_SIZE = 128 * 1024
 
     fun isArchive(file: File): Boolean {
         if (file.isDirectory) return false
@@ -66,10 +70,6 @@ object ArchiveManager {
         }
     }
 
-    /**
-     * Lists virtual entries inside an archive at [innerPath].
-     * Virtual folders are synthesized for nested directory paths so users can browse in-place.
-     */
     suspend fun listArchiveEntries(
         archiveFile: File,
         innerPath: String = ""
@@ -103,40 +103,33 @@ object ArchiveManager {
 
                     val slashIndex = relative.indexOf('/')
                     if (slashIndex != -1) {
-                        // Subdirectory item
                         val dirName = relative.substring(0, slashIndex)
                         if (!directItems.containsKey(dirName)) {
                             directItems[dirName] = DirectoryItem(
                                 name = dirName,
-                                path = "${archiveFile.absolutePath}::$prefix$dirName",
+                                path = "$prefix$dirName",
                                 isDirectory = true,
                                 sizeBytes = 0L,
-                                formattedSize = "Folder",
-                                childCount = 1,
+                                formattedSize = "",
+                                childCount = 0,
                                 fileCountLabel = "Folder",
                                 dateModifiedMs = entry.time.takeIf { it > 0 } ?: archiveFile.lastModified(),
-                                formattedDate = "Archive Folder",
+                                formattedDate = "",
                                 visualType = DirectoryVisualType.FOLDER
                             )
-                        } else {
-                            val existing = directItems[dirName]!!
-                            directItems[dirName] = existing.copy(childCount = existing.childCount + 1)
                         }
                     } else {
-                        // Direct file item
                         val isDir = entry.isDirectory
-                        val size = if (isDir) 0L else entry.size.coerceAtLeast(0L)
-                        val formattedSize = formatBytes(size)
                         directItems[relative] = DirectoryItem(
                             name = relative,
-                            path = "${archiveFile.absolutePath}::$prefix$relative",
+                            path = "$prefix$relative",
                             isDirectory = isDir,
-                            sizeBytes = size,
-                            formattedSize = formattedSize,
+                            sizeBytes = if (isDir) 0L else entry.size.coerceAtLeast(0L),
+                            formattedSize = if (isDir) "" else formatBytes(entry.size.coerceAtLeast(0L)),
                             childCount = 0,
-                            fileCountLabel = if (isDir) "Folder" else formattedSize,
+                            fileCountLabel = if (isDir) "Folder" else formatBytes(entry.size.coerceAtLeast(0L)),
                             dateModifiedMs = entry.time.takeIf { it > 0 } ?: archiveFile.lastModified(),
-                            formattedDate = "In Archive",
+                            formattedDate = "",
                             visualType = if (isDir) DirectoryVisualType.FOLDER else DirectoryVisualType.FILE_GENERIC
                         )
                     }
@@ -157,44 +150,49 @@ object ArchiveManager {
                 var entry: TarArchiveEntry? = tarIn.nextEntry
                 while (entry != null) {
                     val entryName = entry.name.trimStart('/')
-                    if (prefix.isEmpty() || entryName.startsWith(prefix)) {
-                        val relative = if (prefix.isEmpty()) entryName else entryName.removePrefix(prefix)
-                        if (relative.isNotEmpty()) {
-                            val slashIndex = relative.indexOf('/')
-                            if (slashIndex != -1) {
-                                val dirName = relative.substring(0, slashIndex)
-                                if (!directItems.containsKey(dirName)) {
-                                    directItems[dirName] = DirectoryItem(
-                                        name = dirName,
-                                        path = "${archiveFile.absolutePath}::$prefix$dirName",
-                                        isDirectory = true,
-                                        sizeBytes = 0L,
-                                        formattedSize = "Folder",
-                                        childCount = 1,
-                                        fileCountLabel = "Folder",
-                                        dateModifiedMs = entry.modTime?.time ?: archiveFile.lastModified(),
-                                        formattedDate = "Archive Folder",
-                                        visualType = DirectoryVisualType.FOLDER
-                                    )
-                                }
-                            } else {
-                                val isDir = entry.isDirectory
-                                val size = if (isDir) 0L else entry.size.coerceAtLeast(0L)
-                                val formattedSize = formatBytes(size)
-                                directItems[relative] = DirectoryItem(
-                                    name = relative,
-                                    path = "${archiveFile.absolutePath}::$prefix$relative",
-                                    isDirectory = isDir,
-                                    sizeBytes = size,
-                                    formattedSize = formattedSize,
-                                    childCount = 0,
-                                    fileCountLabel = if (isDir) "Folder" else formattedSize,
-                                    dateModifiedMs = entry.modTime?.time ?: archiveFile.lastModified(),
-                                    formattedDate = "In Archive",
-                                    visualType = if (isDir) DirectoryVisualType.FOLDER else DirectoryVisualType.FILE_GENERIC
-                                )
-                            }
+
+                    if (prefix.isNotEmpty() && !entryName.startsWith(prefix)) {
+                        entry = tarIn.nextEntry
+                        continue
+                    }
+
+                    val relative = if (prefix.isEmpty()) entryName else entryName.removePrefix(prefix)
+                    if (relative.isEmpty()) {
+                        entry = tarIn.nextEntry
+                        continue
+                    }
+
+                    val slashIndex = relative.indexOf('/')
+                    if (slashIndex != -1) {
+                        val dirName = relative.substring(0, slashIndex)
+                        if (!directItems.containsKey(dirName)) {
+                            directItems[dirName] = DirectoryItem(
+                                name = dirName,
+                                path = "$prefix$dirName",
+                                isDirectory = true,
+                                sizeBytes = 0L,
+                                formattedSize = "",
+                                childCount = 0,
+                                fileCountLabel = "Folder",
+                                dateModifiedMs = entry.modTime.time.takeIf { it > 0 } ?: archiveFile.lastModified(),
+                                formattedDate = "",
+                                visualType = DirectoryVisualType.FOLDER
+                            )
                         }
+                    } else {
+                        val isDir = entry.isDirectory
+                        directItems[relative] = DirectoryItem(
+                            name = relative,
+                            path = "$prefix$relative",
+                            isDirectory = isDir,
+                            sizeBytes = if (isDir) 0L else entry.size.coerceAtLeast(0L),
+                            formattedSize = if (isDir) "" else formatBytes(entry.size.coerceAtLeast(0L)),
+                            childCount = 0,
+                            fileCountLabel = if (isDir) "Folder" else formatBytes(entry.size.coerceAtLeast(0L)),
+                            dateModifiedMs = entry.modTime.time.takeIf { it > 0 } ?: archiveFile.lastModified(),
+                            formattedDate = "",
+                            visualType = if (isDir) DirectoryVisualType.FOLDER else DirectoryVisualType.FILE_GENERIC
+                        )
                     }
                     entry = tarIn.nextEntry
                 }
@@ -217,39 +215,71 @@ object ArchiveManager {
     }
 
     /**
-     * Extracts an entire archive to [targetDir].
+     * Extracts an entire archive to [targetDir] with live real-time byte progress, pause, resume, cancel, and rollback.
      */
     suspend fun extractAll(
+        context: Context,
         archiveFile: File,
         targetDir: File,
-        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }
+        token: CancellablePauseableToken
     ): Result<Int> = withContext(Dispatchers.IO) {
-        if (!targetDir.exists()) targetDir.mkdirs()
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+            token.trackCreatedItem(targetDir)
+        }
         val type = detectArchiveType(archiveFile)
+        val extractedPaths = mutableListOf<String>()
 
         return@withContext try {
-            when (type) {
-                ArchiveType.ZIP -> extractZip(archiveFile, targetDir, onProgress)
-                ArchiveType.TAR, ArchiveType.TAR_GZ, ArchiveType.TAR_BZ2 -> extractTar(archiveFile, type, targetDir, onProgress)
-                else -> Result.failure(IllegalArgumentException("Unsupported archive type"))
+            val count = when (type) {
+                ArchiveType.ZIP -> extractZip(context, archiveFile, targetDir, token, extractedPaths)
+                ArchiveType.TAR, ArchiveType.TAR_GZ, ArchiveType.TAR_BZ2 -> extractTar(context, archiveFile, type, targetDir, token, extractedPaths)
+                else -> throw IllegalArgumentException("Unsupported archive type")
             }
+            MediaStoreNotifier.scanFiles(context, extractedPaths)
+            FileOperationController.completeSuccess()
+            Result.success(count)
+        } catch (e: CancellationException) {
+            token.rollback()
+            FileOperationController.cancel()
+            Result.failure(e)
         } catch (e: Exception) {
+            token.rollback()
+            FileOperationController.completeFailure(e.message ?: "Extraction failed")
             Result.failure(e)
         }
     }
 
     private fun extractZip(
+        context: Context,
         archiveFile: File,
         targetDir: File,
-        onProgress: (Int, Int, String) -> Unit
-    ): Result<Int> {
+        token: CancellablePauseableToken,
+        extractedPaths: MutableList<String>
+    ): Int {
         var count = 0
         ZipFile(archiveFile).use { zip ->
-            val total = zip.size()
+            val totalFiles = zip.size()
+            var totalBytes = 0L
+
+            // Calculate total uncompressed bytes
+            val entriesEnum = zip.entries()
+            while (entriesEnum.hasMoreElements()) {
+                val e = entriesEnum.nextElement()
+                if (!e.isDirectory && e.size > 0L) {
+                    totalBytes += e.size
+                }
+            }
+            if (totalBytes <= 0L) {
+                totalBytes = archiveFile.length() * 2L // Estimate if compressed sizes not in header
+            }
+
+            var processedBytes = 0L
             val entries = zip.entries()
-            val buffer = ByteArray(64 * 1024)
+            val buffer = ByteArray(BUFFER_SIZE)
 
             while (entries.hasMoreElements()) {
+                token.checkPauseAndCancel()
                 val entry = entries.nextElement()
                 val outFile = File(targetDir, entry.name)
 
@@ -259,65 +289,107 @@ object ArchiveManager {
                 }
 
                 if (entry.isDirectory) {
-                    outFile.mkdirs()
+                    if (!outFile.exists()) {
+                        outFile.mkdirs()
+                        token.trackCreatedItem(outFile)
+                    }
                 } else {
-                    outFile.parentFile?.mkdirs()
+                    outFile.parentFile?.let { p ->
+                        if (!p.exists()) {
+                            p.mkdirs()
+                            token.trackCreatedItem(p)
+                        }
+                    }
+                    token.trackCreatedItem(outFile)
+
                     zip.getInputStream(entry).use { inStream ->
                         FileOutputStream(outFile).use { outStream ->
                             var read: Int
                             while (inStream.read(buffer).also { read = it } != -1) {
+                                token.checkPauseAndCancel()
                                 outStream.write(buffer, 0, read)
+                                processedBytes += read
+                                FileOperationController.updateProgress(
+                                    processedBytes = processedBytes,
+                                    totalBytes = totalBytes,
+                                    currentFileName = entry.name.substringAfterLast('/'),
+                                    currentFileIndex = count + 1,
+                                    totalFiles = totalFiles
+                                )
                             }
                         }
                     }
+                    extractedPaths.add(outFile.absolutePath)
                 }
                 count++
-                onProgress(count, total, entry.name)
             }
         }
-        return Result.success(count)
+        return count
     }
 
     private fun extractTar(
+        context: Context,
         archiveFile: File,
         type: ArchiveType,
         targetDir: File,
-        onProgress: (Int, Int, String) -> Unit
-    ): Result<Int> {
+        token: CancellablePauseableToken,
+        extractedPaths: MutableList<String>
+    ): Int {
         var count = 0
-        val buffer = ByteArray(64 * 1024)
+        val buffer = ByteArray(BUFFER_SIZE)
+        val totalBytes = archiveFile.length() * 3L // Estimate uncompressed tar
+        var processedBytes = 0L
 
         openTarInputStream(archiveFile, type).use { tarIn ->
             var entry: TarArchiveEntry? = tarIn.nextEntry
             while (entry != null) {
+                token.checkPauseAndCancel()
                 val outFile = File(targetDir, entry.name)
+
+                // Guard against Zip Slip vulnerability
                 if (!outFile.canonicalPath.startsWith(targetDir.canonicalPath)) {
                     entry = tarIn.nextEntry
                     continue
                 }
 
                 if (entry.isDirectory) {
-                    outFile.mkdirs()
+                    if (!outFile.exists()) {
+                        outFile.mkdirs()
+                        token.trackCreatedItem(outFile)
+                    }
                 } else {
-                    outFile.parentFile?.mkdirs()
+                    outFile.parentFile?.let { p ->
+                        if (!p.exists()) {
+                            p.mkdirs()
+                            token.trackCreatedItem(p)
+                        }
+                    }
+                    token.trackCreatedItem(outFile)
+
                     FileOutputStream(outFile).use { outStream ->
                         var read: Int
                         while (tarIn.read(buffer).also { read = it } != -1) {
+                            token.checkPauseAndCancel()
                             outStream.write(buffer, 0, read)
+                            processedBytes += read
+                            FileOperationController.updateProgress(
+                                processedBytes = processedBytes,
+                                totalBytes = totalBytes,
+                                currentFileName = entry.name.substringAfterLast('/'),
+                                currentFileIndex = count + 1,
+                                totalFiles = -1
+                            )
                         }
                     }
+                    extractedPaths.add(outFile.absolutePath)
                 }
                 count++
-                onProgress(count, -1, entry.name)
                 entry = tarIn.nextEntry
             }
         }
-        return Result.success(count)
+        return count
     }
 
-    /**
-     * Extracts a single item from an archive to a temporary file for instant viewing.
-     */
     suspend fun extractSingleFile(
         archiveFile: File,
         entryPath: String,
@@ -348,17 +420,22 @@ object ArchiveManager {
     }
 
     /**
-     * Compresses the selected files/directories into a new ZIP archive.
+     * Compresses the selected files/directories into a new ZIP or TAR archive with live byte throughput.
      */
-    suspend fun createZipArchive(
+    suspend fun createArchive(
+        context: Context,
         sourceFiles: List<File>,
-        destinationZip: File,
+        destinationFile: File,
+        format: ArchiveType = ArchiveType.ZIP,
         level: CompressionLevel = CompressionLevel.NORMAL,
-        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }
+        token: CancellablePauseableToken
     ): Result<File> = withContext(Dispatchers.IO) {
         return@withContext try {
-            destinationZip.parentFile?.mkdirs()
+            destinationFile.parentFile?.mkdirs()
+            token.trackCreatedItem(destinationFile)
+
             val allFiles = mutableListOf<Pair<File, String>>()
+            var totalBytes = 0L
 
             for (src in sourceFiles) {
                 if (src.isDirectory) {
@@ -368,76 +445,81 @@ object ArchiveManager {
                 }
             }
 
-            val total = allFiles.size
-            var current = 0
-            val buffer = ByteArray(64 * 1024)
+            for ((f, _) in allFiles) {
+                totalBytes += f.length()
+            }
 
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(destinationZip))).use { zipOut ->
-                zipOut.setLevel(level.level)
-                for ((file, pathInZip) in allFiles) {
-                    val entry = ZipEntry(pathInZip)
-                    entry.time = file.lastModified()
-                    zipOut.putNextEntry(entry)
+            val totalFiles = allFiles.size
+            var currentFile = 0
+            var processedBytes = 0L
+            val buffer = ByteArray(BUFFER_SIZE)
 
-                    FileInputStream(file).use { fileIn ->
-                        var read: Int
-                        while (fileIn.read(buffer).also { read = it } != -1) {
-                            zipOut.write(buffer, 0, read)
+            if (format == ArchiveType.ZIP) {
+                ZipOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { zipOut ->
+                    zipOut.setLevel(level.level)
+                    for ((file, pathInZip) in allFiles) {
+                        token.checkPauseAndCancel()
+                        val entry = ZipEntry(pathInZip)
+                        entry.time = file.lastModified()
+                        zipOut.putNextEntry(entry)
+
+                        FileInputStream(file).use { fileIn ->
+                            var read: Int
+                            while (fileIn.read(buffer).also { read = it } != -1) {
+                                token.checkPauseAndCancel()
+                                zipOut.write(buffer, 0, read)
+                                processedBytes += read
+                                FileOperationController.updateProgress(
+                                    processedBytes = processedBytes,
+                                    totalBytes = totalBytes,
+                                    currentFileName = file.name,
+                                    currentFileIndex = currentFile + 1,
+                                    totalFiles = totalFiles
+                                )
+                            }
                         }
+                        zipOut.closeEntry()
+                        currentFile++
                     }
-                    zipOut.closeEntry()
-                    current++
-                    onProgress(current, total, file.name)
+                }
+            } else {
+                TarArchiveOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { tarOut ->
+                    for ((file, pathInTar) in allFiles) {
+                        token.checkPauseAndCancel()
+                        val entry = TarArchiveEntry(file, pathInTar)
+                        tarOut.putArchiveEntry(entry)
+
+                        FileInputStream(file).use { fileIn ->
+                            var read: Int
+                            while (fileIn.read(buffer).also { read = it } != -1) {
+                                token.checkPauseAndCancel()
+                                tarOut.write(buffer, 0, read)
+                                processedBytes += read
+                                FileOperationController.updateProgress(
+                                    processedBytes = processedBytes,
+                                    totalBytes = totalBytes,
+                                    currentFileName = file.name,
+                                    currentFileIndex = currentFile + 1,
+                                    totalFiles = totalFiles
+                                )
+                            }
+                        }
+                        tarOut.closeArchiveEntry()
+                        currentFile++
+                    }
                 }
             }
-            Result.success(destinationZip)
-        } catch (e: Exception) {
+
+            MediaStoreNotifier.scanFile(context, destinationFile.absolutePath)
+            FileOperationController.completeSuccess()
+            Result.success(destinationFile)
+        } catch (e: CancellationException) {
+            token.rollback()
+            FileOperationController.cancel()
             Result.failure(e)
-        }
-    }
-
-    /**
-     * Compresses the selected files/directories into a TAR archive.
-     */
-    suspend fun createTarArchive(
-        sourceFiles: List<File>,
-        destinationTar: File,
-        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }
-    ): Result<File> = withContext(Dispatchers.IO) {
-        return@withContext try {
-            destinationTar.parentFile?.mkdirs()
-            val allFiles = mutableListOf<Pair<File, String>>()
-
-            for (src in sourceFiles) {
-                if (src.isDirectory) {
-                    collectDirFiles(src, src.name, allFiles)
-                } else {
-                    allFiles.add(Pair(src, src.name))
-                }
-            }
-
-            val total = allFiles.size
-            var current = 0
-            val buffer = ByteArray(64 * 1024)
-
-            TarArchiveOutputStream(BufferedOutputStream(FileOutputStream(destinationTar))).use { tarOut ->
-                for ((file, pathInTar) in allFiles) {
-                    val entry = TarArchiveEntry(file, pathInTar)
-                    tarOut.putArchiveEntry(entry)
-
-                    FileInputStream(file).use { fileIn ->
-                        var read: Int
-                        while (fileIn.read(buffer).also { read = it } != -1) {
-                            tarOut.write(buffer, 0, read)
-                        }
-                    }
-                    tarOut.closeArchiveEntry()
-                    current++
-                    onProgress(current, total, file.name)
-                }
-            }
-            Result.success(destinationTar)
         } catch (e: Exception) {
+            token.rollback()
+            FileOperationController.completeFailure(e.message ?: "Compression failed")
             Result.failure(e)
         }
     }
@@ -454,9 +536,6 @@ object ArchiveManager {
         }
     }
 
-    /**
-     * Tests archive integrity by verifying headers and calculating CRC32 without extracting files.
-     */
     suspend fun testArchiveIntegrity(archiveFile: File): Result<String> = withContext(Dispatchers.IO) {
         val type = detectArchiveType(archiveFile)
         if (type != ArchiveType.ZIP) {
@@ -465,7 +544,7 @@ object ArchiveManager {
 
         return@withContext try {
             var testedCount = 0
-            val buffer = ByteArray(64 * 1024)
+            val buffer = ByteArray(BUFFER_SIZE)
 
             ZipFile(archiveFile).use { zip ->
                 val entries = zip.entries()
@@ -495,15 +574,6 @@ object ArchiveManager {
     }
 
     private fun formatBytes(bytes: Long): String {
-        if (bytes <= 0L) return "0 B"
-        val kb = bytes / 1024.0
-        val mb = kb / 1024.0
-        val gb = mb / 1024.0
-        return when {
-            gb >= 1.0 -> String.format(Locale.US, "%.1f GB", gb)
-            mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
-            kb >= 1.0 -> String.format(Locale.US, "%.1f KB", kb)
-            else -> "$bytes B"
-        }
+        return FileOpProgress.formatBytes(bytes)
     }
 }

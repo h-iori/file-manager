@@ -2,6 +2,7 @@ package com.ioristudios.filemanager.data
 
 import android.content.Context
 import android.os.Environment
+import com.ioristudios.filemanager.services.FileOperationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -252,15 +253,28 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
             return PasteResult(0, 0, 0, "Clipboard is empty")
         }
 
+        FileOperationService.start(context)
+
+        val opType = if (clip.mode == ClipboardMode.CUT) FileOpType.MOVE else FileOpType.COPY
+        val title = "${opType.verb} ${clip.items.size} item${if (clip.items.size > 1) "s" else ""}"
+        val token = FileOperationController.startOperation(opType, title, totalFiles = clip.items.size)
+
         val result = FileOperationsManager.executePaste(
+            context = context,
             sourcePaths = clip.items,
             mode = clip.mode,
             targetDirectoryPath = targetPath,
-            conflictStrategy = conflictStrategy
+            conflictStrategy = conflictStrategy,
+            token = token
         )
 
-        if (clip.mode == ClipboardMode.CUT && result.successCount > 0) {
-            clearClipboard()
+        if (clip.mode == ClipboardMode.CUT) {
+            val remaining = clip.items.filterNot { result.successfullyMovedPaths.contains(it) }
+            if (remaining.isEmpty()) {
+                clearClipboard()
+            } else {
+                _clipboardState.value = clip.copy(items = remaining)
+            }
         }
 
         loadDirectory(targetPath)
@@ -300,10 +314,19 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
 
     override suspend fun deleteItems(filePaths: List<String>): Result<Int> {
         val files = filePaths.map { File(it) }
-        val result = FileOperationsManager.deleteItems(files)
+        FileOperationService.start(context)
+        val token = FileOperationController.startOperation(
+            FileOpType.DELETE,
+            "Deleting ${files.size} item${if (files.size > 1) "s" else ""}",
+            totalFiles = files.size
+        )
+        val result = FileOperationsManager.deleteItems(context, files, token)
         if (result.isSuccess) {
             loadDirectory(_directoryState.value.currentPath)
             refresh(_homeScreenData.value.hasPermission)
+            FileOperationController.completeSuccess()
+        } else {
+            FileOperationController.completeFailure(result.exceptionOrNull()?.message ?: "Delete failed")
         }
         return result
     }
@@ -329,7 +352,13 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
     override suspend fun extractArchive(archivePath: String, targetDir: String): Result<Int> = withContext(Dispatchers.IO) {
         val archiveFile = File(archivePath)
         val outDir = File(targetDir)
-        val res = ArchiveManager.extractAll(archiveFile, outDir)
+        FileOperationService.start(context)
+        val token = FileOperationController.startOperation(
+            FileOpType.EXTRACT,
+            "Extracting ${archiveFile.name}",
+            totalBytes = archiveFile.length()
+        )
+        val res = ArchiveManager.extractAll(context, archiveFile, outDir, token)
         if (res.isSuccess) {
             loadDirectory(_directoryState.value.currentPath)
             refresh(_homeScreenData.value.hasPermission)
@@ -344,10 +373,13 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         level: CompressionLevel
     ): Result<File> = withContext(Dispatchers.IO) {
         val files = sourcePaths.map { File(it) }
-        val res = when (format) {
-            ArchiveType.TAR -> ArchiveManager.createTarArchive(files, destFile)
-            else -> ArchiveManager.createZipArchive(files, destFile, level)
-        }
+        FileOperationService.start(context)
+        val token = FileOperationController.startOperation(
+            FileOpType.COMPRESS,
+            "Compressing into ${destFile.name}",
+            totalFiles = files.size
+        )
+        val res = ArchiveManager.createArchive(context, files, destFile, format, level, token)
         if (res.isSuccess) {
             loadDirectory(_directoryState.value.currentPath)
             refresh(_homeScreenData.value.hasPermission)

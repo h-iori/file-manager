@@ -96,6 +96,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.ContentScale
 import com.ioristudios.filemanager.ui.components.ApkIconManager
+import com.ioristudios.filemanager.ui.components.FileOperationProgressModal
 import com.ioristudios.filemanager.ui.components.FileDetailsModalDialog
 import com.ioristudios.filemanager.ui.components.GlassContextMenu
 import com.ioristudios.filemanager.ui.components.GlassIconButton
@@ -160,9 +161,16 @@ fun MainScreen(
 ) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val homeState by viewModel.homeUiState.collectAsStateWithLifecycle()
+    val clipboardState by viewModel.clipboardState.collectAsStateWithLifecycle()
+    val fileOpProgress by viewModel.fileOpProgress.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var userDismissedModalToBackground by remember { mutableStateOf(false) }
+
+    LaunchedEffect(fileOpProgress.operationId) {
+        userDismissedModalToBackground = false
+    }
 
     val showMessage: (String) -> Unit = { message ->
         scope.launch {
@@ -292,13 +300,27 @@ fun MainScreen(
             )
         }
 
-        // Snackbar Host
+        // Snackbar Host (Dynamic vertical elevation above BottomNav and Paste Capsule avoiding overlaps)
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 80.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = if (clipboardState.isActive) 148.dp else 84.dp)
         )
+
+        // Glassmorphic File Operation Progress Modal
+        if (fileOpProgress.isActive && !userDismissedModalToBackground) {
+            FileOperationProgressModal(
+                progress = fileOpProgress,
+                onPause = { viewModel.pauseFileOperation() },
+                onResume = { viewModel.resumeFileOperation() },
+                onCancel = { viewModel.cancelFileOperation() },
+                onDismissToBackground = {
+                    userDismissedModalToBackground = true
+                }
+            )
+        }
     }
 }
 

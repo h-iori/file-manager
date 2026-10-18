@@ -106,7 +106,8 @@ data class PasteResult(
     val successCount: Int = 0,
     val skippedCount: Int = 0,
     val errorCount: Int = 0,
-    val message: String = ""
+    val message: String = "",
+    val successfullyMovedPaths: List<String> = emptyList()
 )
 
 enum class SearchFilterCategory(val label: String) {

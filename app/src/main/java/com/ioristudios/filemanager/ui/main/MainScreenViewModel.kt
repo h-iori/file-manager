@@ -10,6 +10,8 @@ import com.ioristudios.filemanager.data.CompressionLevel
 import com.ioristudios.filemanager.data.ConflictResolution
 import com.ioristudios.filemanager.data.DataRepository
 import com.ioristudios.filemanager.data.DirectoryScreenState
+import com.ioristudios.filemanager.data.FileOpProgress
+import com.ioristudios.filemanager.data.FileOperationController
 import com.ioristudios.filemanager.data.HomeScreenData
 import com.ioristudios.filemanager.data.InstalledAppItem
 import com.ioristudios.filemanager.data.PasteResult
@@ -39,6 +41,23 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     val settingsUiState: StateFlow<SettingsUiState> = repository.settingsState
     val clipboardState: StateFlow<ClipboardState> = repository.clipboardState
     val searchUiState: StateFlow<SearchUiState> = repository.searchState
+    val fileOpProgress: StateFlow<FileOpProgress> = FileOperationController.progressState
+
+    fun pauseFileOperation() {
+        FileOperationController.pause()
+    }
+
+    fun resumeFileOperation() {
+        FileOperationController.resume()
+    }
+
+    fun cancelFileOperation() {
+        FileOperationController.cancel()
+    }
+
+    fun dismissFileOperationModal() {
+        FileOperationController.reset()
+    }
 
     private val _selectedTab = MutableStateFlow(NavTab.HOME)
     val selectedTab: StateFlow<NavTab> = _selectedTab.asStateFlow()
