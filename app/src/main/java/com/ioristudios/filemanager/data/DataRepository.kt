@@ -61,7 +61,7 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
     private val _settingsState = MutableStateFlow(prefs.getSettings())
     override val settingsState: StateFlow<SettingsUiState> = _settingsState.asStateFlow()
 
-    private val _homeScreenData = MutableStateFlow(HomeScreenData())
+    private val _homeScreenData = MutableStateFlow(HomeScreenData(reclaimableFormatted = "Calculating…"))
     override val homeScreenData: StateFlow<HomeScreenData> = _homeScreenData.asStateFlow()
 
     private val defaultRootPath: String = Environment.getExternalStorageDirectory().absolutePath

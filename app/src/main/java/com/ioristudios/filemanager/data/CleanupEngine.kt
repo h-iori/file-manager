@@ -1,3 +1,4 @@
+
 package com.ioristudios.filemanager.data
 
 import android.content.Context
@@ -38,6 +39,25 @@ data class CleanupScanProgress(val phase: String = "Preparing cleanup scan", val
 class CleanupEngine(private val context: Context) {
     private val _progress = MutableStateFlow(CleanupScanProgress())
     val progress: StateFlow<CleanupScanProgress> = _progress.asStateFlow()
+
+    /**
+     * Estimates the bytes available from cleanup items that are selected by default.
+     * Personal/old large files are intentionally excluded because they require explicit opt-in.
+     * This lightweight estimate avoids the full deep scan used by the cleanup review screen.
+     */
+    suspend fun estimateDefaultReclaimableBytes(): Long = withContext(Dispatchers.IO) {
+        val storage = Environment.getExternalStorageDirectory()
+        val cacheTargets = listOfNotNull(context.externalCacheDir, context.cacheDir)
+            .distinctBy { it.absolutePath }
+            .filter { it.exists() && it.canWrite() }
+
+        val thumbnailTargets = listOf(
+            File(storage, "DCIM/.thumbnails"),
+            File(storage, "Pictures/.thumbnails")
+        ).filter { it.exists() && it.canWrite() }
+
+        (cacheTargets + thumbnailTargets).sumOf { directorySize(it).coerceAtLeast(0L) }
+    }
 
     suspend fun scan(): CleanupScanResult = withContext(Dispatchers.IO) {
         val storage = Environment.getExternalStorageDirectory()

@@ -1,3 +1,4 @@
+
 package com.ioristudios.filemanager.ui.directory
 
 import android.content.Context
@@ -113,6 +114,7 @@ import com.ioristudios.filemanager.ui.components.ArchiveOptionsDialog
 import com.ioristudios.filemanager.ui.components.CompressDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Android
@@ -146,9 +148,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -203,7 +202,33 @@ fun DirectoryScreen(
     var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
     val isSelectionMode = selectedPaths.isNotEmpty()
     val checkboxBounds = remember { mutableStateMapOf<String, Rect>() }
-    var fileListBounds by remember { mutableStateOf(Rect.Zero) }
+    var dragSelectionMode by remember { mutableStateOf<Boolean?>(null) }
+    val dragVisitedPaths = remember { mutableSetOf<String>() }
+
+    fun beginCheckboxDrag(path: String) {
+        dragVisitedPaths.clear()
+        val shouldSelect = path !in selectedPaths
+        dragSelectionMode = shouldSelect
+        dragVisitedPaths.add(path)
+        selectedPaths = if (shouldSelect) selectedPaths + path else selectedPaths - path
+        haptics.trigger(HapticType.SELECTION_NOTCH)
+    }
+
+    fun updateCheckboxDrag(rootPosition: Offset) {
+        val item = state.items.firstOrNull { candidate ->
+            checkboxBounds[candidate.path]?.contains(rootPosition) == true
+        } ?: return
+        val shouldSelect = dragSelectionMode ?: return
+        if (dragVisitedPaths.add(item.path)) {
+            selectedPaths = if (shouldSelect) selectedPaths + item.path else selectedPaths - item.path
+            haptics.trigger(HapticType.SELECTION_NOTCH)
+        }
+    }
+
+    fun finishCheckboxDrag() {
+        dragSelectionMode = null
+        dragVisitedPaths.clear()
+    }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showBatchCompressDialog by remember { mutableStateOf(false) }
 
@@ -383,7 +408,7 @@ fun DirectoryScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "· ${state.items.size} items",
+                        text = "Â· ${state.items.size} items",
                         fontFamily = OutfitFontFamily,
                         color = FilesTheme.colors.textMuted,
                         fontSize = 12.sp
@@ -551,43 +576,7 @@ fun DirectoryScreen(
                                 state = listState,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp)
-                                    .onGloballyPositioned { fileListBounds = it.boundsInRoot() }
-                                    .pointerInput(isSelectionMode, checkboxBounds.size, selectedPaths) {
-                                        if (!isSelectionMode) return@pointerInput
-                                        var affectedPaths = mutableSetOf<String>()
-                                        var selectMode = true
-
-                                        fun itemAt(position: Offset): DirectoryItem? {
-                                            val rootPosition = Offset(
-                                                fileListBounds.left + position.x,
-                                                fileListBounds.top + position.y
-                                            )
-                                            return state.items.firstOrNull { item ->
-                                                checkboxBounds[item.path]?.contains(rootPosition) == true
-                                            }
-                                        }
-
-                                        detectDragGestures(
-                                            onDragStart = { position ->
-                                                val firstItem = itemAt(position) ?: return@detectDragGestures
-                                                selectMode = firstItem.path !in selectedPaths
-                                                affectedPaths = mutableSetOf(firstItem.path)
-                                                selectedPaths = if (selectMode) selectedPaths + firstItem.path else selectedPaths - firstItem.path
-                                                haptics.trigger(HapticType.SELECTION_NOTCH)
-                                            },
-                                            onDragEnd = { affectedPaths = mutableSetOf() },
-                                            onDragCancel = { affectedPaths = mutableSetOf() },
-                                            onDrag = { change, _ ->
-                                                val item = itemAt(change.position) ?: return@detectDragGestures
-                                                if (affectedPaths.add(item.path)) {
-                                                    selectedPaths = if (selectMode) selectedPaths + item.path else selectedPaths - item.path
-                                                    haptics.trigger(HapticType.SELECTION_NOTCH)
-                                                }
-                                                change.consume()
-                                            }
-                                        )
-                                    },
+                                    .padding(horizontal = 16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 item { Spacer(modifier = Modifier.height(2.dp)) }
@@ -605,6 +594,9 @@ fun DirectoryScreen(
                                     isSelectionMode = isSelectionMode,
                                     isSelected = isSelected,
                                         onCheckboxBoundsChanged = { bounds -> checkboxBounds[item.path] = bounds },
+                                        onDragSelectionStart = { path -> beginCheckboxDrag(path) },
+                                        onDragSelectionMove = { position -> updateCheckboxDrag(position) },
+                                        onDragSelectionEnd = { finishCheckboxDrag() },
                                         onToggleSelect = {
                                             selectedPaths = if (isSelected) {
                                                 selectedPaths - item.path
@@ -1096,6 +1088,9 @@ fun DirectoryItemRow(
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     onCheckboxBoundsChanged: ((Rect) -> Unit)? = null,
+    onDragSelectionStart: ((String) -> Unit)? = null,
+    onDragSelectionMove: ((Offset) -> Unit)? = null,
+    onDragSelectionEnd: (() -> Unit)? = null,
     onToggleSelect: () -> Unit = {},
     onLongClick: () -> Unit = {},
     onClick: () -> Unit,
@@ -1111,6 +1106,7 @@ fun DirectoryItemRow(
     onTestArchive: (() -> Unit)? = null
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var checkboxBoundsInRoot by remember(item.path) { mutableStateOf(Rect.Zero) }
     val haptics = LocalAppHaptics.current
 
     val targetBg = if (isSelected) {
@@ -1180,8 +1176,51 @@ fun DirectoryItemRow(
                 ) {
                     SelectionCheckbox(
                         isSelected = isSelected,
+                        modifier = if (
+                            onDragSelectionStart != null &&
+                            onDragSelectionMove != null &&
+                            onDragSelectionEnd != null
+                        ) {
+                            Modifier
+                                .size(24.dp)
+                                .pointerInput(item.path, isSelectionMode) {
+                                    detectDragGestures(
+                                        onDragStart = { localPosition ->
+                                            onDragSelectionStart.invoke(item.path)
+                                            val bounds = checkboxBoundsInRoot
+                                            if (bounds != Rect.Zero) {
+                                                onDragSelectionMove.invoke(
+                                                    Offset(
+                                                        bounds.left + localPosition.x,
+                                                        bounds.top + localPosition.y
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        onDragEnd = { onDragSelectionEnd.invoke() },
+                                        onDragCancel = { onDragSelectionEnd.invoke() },
+                                        onDrag = { change, _ ->
+                                            val bounds = checkboxBoundsInRoot
+                                            if (bounds != Rect.Zero) {
+                                                onDragSelectionMove.invoke(
+                                                    Offset(
+                                                        bounds.left + change.position.x,
+                                                        bounds.top + change.position.y
+                                                    )
+                                                )
+                                            }
+                                            change.consume()
+                                        }
+                                    )
+                                }
+                        } else {
+                            Modifier
+                        },
                         onClick = onToggleSelect,
-                        onBoundsChanged = onCheckboxBoundsChanged
+                        onBoundsChanged = { bounds ->
+                            checkboxBoundsInRoot = bounds
+                            onCheckboxBoundsChanged?.invoke(bounds)
+                        }
                     )
                 }
 
@@ -1268,7 +1307,7 @@ fun FileDetailsDialog(
 ) {
     val fileObj = File(item.path)
     val exactBytes = if (item.isDirectory) item.sizeBytes else fileObj.length()
-    val lastModifiedFormatted = SimpleDateFormat("MMM d, yyyy · h:mm:ss a", Locale.US).format(Date(item.dateModifiedMs))
+    val lastModifiedFormatted = SimpleDateFormat("MMM d, yyyy Â· h:mm:ss a", Locale.US).format(Date(item.dateModifiedMs))
 
     AlertDialog(
         onDismissRequest = onDismiss,

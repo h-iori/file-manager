@@ -1,3 +1,4 @@
+
 package com.ioristudios.filemanager.data
 
 import android.content.ContentUris
@@ -54,6 +55,12 @@ class StorageScanner(private val context: Context) {
         }
         val categories = getRealCategories(storage.totalBytes)
         val recentFiles = getRealRecentFiles()
+        // Match the cleanup screen's default selection; optional personal files are excluded.
+        val reclaimableBytes = try {
+            CleanupEngine(context.applicationContext).estimateDefaultReclaimableBytes()
+        } catch (_: Exception) {
+            0L
+        }
 
         HomeScreenData(
             storage = storage,
@@ -62,7 +69,7 @@ class StorageScanner(private val context: Context) {
             categories = categories,
             recentFiles = recentFiles,
             hasPermission = hasFullPermission,
-            reclaimableFormatted = "2.4 GB"
+            reclaimableFormatted = formatBytes(reclaimableBytes)
         )
     }
 
@@ -203,9 +210,9 @@ class StorageScanner(private val context: Context) {
                 }
                 val label = when {
                     protectionInfo.isProtected && protectionInfo.level == ProtectionLevel.SCOPED_STORAGE_RESTRICTED ->
-                        "Protected · Scoped Storage"
+                        "Protected Â· Scoped Storage"
                     protectionInfo.isProtected && protectionInfo.level == ProtectionLevel.SYSTEM_CORE_LOCKED ->
-                        "System Core · Locked"
+                        "System Core Â· Locked"
                     count == 0 -> "Empty folder"
                     count == 1 -> "1 item"
                     else -> "$count items"
@@ -215,7 +222,7 @@ class StorageScanner(private val context: Context) {
                 val len = file.length()
                 val formattedSize = formatBytes(len)
                 val formattedDate = formatRelativeDate(file.lastModified())
-                Triple(len, 1, "$formattedSize · $formattedDate")
+                Triple(len, 1, "$formattedSize Â· $formattedDate")
             }
 
             val visualType = if (isDir) {
