@@ -19,6 +19,7 @@ app/build/
 
 # Gradle files
 .gradle/
+.gradle-user/
 buildOutput/
 
 # Local configuration file (sdk.dir, local properties)

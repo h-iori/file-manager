@@ -96,6 +96,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -232,6 +235,7 @@ fun StorageDonutChart(
             DonutCategorySlice("Downloads", storage.downloadsBytes, ChartDownloadsAmber),
             DonutCategorySlice("Apps", storage.appsBytes, ChartAppsOrange),
             DonutCategorySlice("System", storage.systemBytes, ChartSystemSlate),
+            DonutCategorySlice("Other", storage.otherBytes, Color(0xFF6366F1)),
             DonutCategorySlice("Available", storage.freeBytes, ChartAvailableEmerald)
         )
     }
@@ -956,7 +960,8 @@ fun shareMultipleFilesToSystem(context: Context, paths: List<String>, showMessag
 fun SelectionCheckbox(
     isSelected: Boolean,
     modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onBoundsChanged: ((Rect) -> Unit)? = null
 ) {
     val haptics = LocalAppHaptics.current
     val motion = LocalMotionSensitivity.current
@@ -969,6 +974,9 @@ fun SelectionCheckbox(
     Box(
         modifier = modifier
             .size(24.dp)
+            .onGloballyPositioned { coordinates ->
+                onBoundsChanged?.invoke(coordinates.boundsInRoot())
+            }
             .graphicsLayer {
                 if (!motion.isReducedMotion) {
                     scaleX = scale

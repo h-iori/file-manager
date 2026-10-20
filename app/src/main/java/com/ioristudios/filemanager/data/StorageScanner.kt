@@ -2,6 +2,7 @@ package com.ioristudios.filemanager.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -167,7 +168,15 @@ class StorageScanner(private val context: Context) {
             audioBytes = (volume.usedBytes * 0.10).toLong(),
             downloadsBytes = (volume.usedBytes * 0.08).toLong(),
             appsBytes = 0L,
-            systemBytes = (volume.usedBytes * 0.07).toLong()
+            systemBytes = (volume.usedBytes * 0.07).toLong(),
+            otherBytes = max(0L, volume.usedBytes - (
+                (volume.usedBytes * 0.35).toLong() +
+                    (volume.usedBytes * 0.25).toLong() +
+                    (volume.usedBytes * 0.15).toLong() +
+                    (volume.usedBytes * 0.10).toLong() +
+                    (volume.usedBytes * 0.08).toLong() +
+                    (volume.usedBytes * 0.07).toLong()
+                ))
         )
     }
 
@@ -426,15 +435,15 @@ class StorageScanner(private val context: Context) {
 
             val mediaSum = photosBytes + videosBytes + audioBytes + docBytes + downloadBytes
             val nonMediaUsed = max(0L, usedBytes - mediaSum)
-            val measuredAppApkBytes = queryInstalledAppsBytes()
-            val estimatedAppsBytes = if (measuredAppApkBytes > 0L) {
-                val withData = (measuredAppApkBytes * 1.8).toLong()
-                withData.coerceIn(measuredAppApkBytes, maxOf(1L, nonMediaUsed - 8L * 1024 * 1024 * 1024))
-            } else {
-                (nonMediaUsed * 0.56).toLong()
-            }
-            val systemBytes = max(0L, nonMediaUsed - estimatedAppsBytes)
-            val appsBytes = estimatedAppsBytes
+            val userAppApkBytes = queryInstalledAppsBytes(systemAppsOnly = false)
+            val systemApkBytes = queryInstalledAppsBytes(systemAppsOnly = true)
+            // Keep each displayed bucket independent.  The remainder is intentionally
+            // preserved as Other instead of being absorbed into the System estimate.
+            val appsBytes = (userAppApkBytes * 1.8).toLong().coerceIn(0L, nonMediaUsed)
+            val systemBytes = systemApkBytes.coerceIn(0L, (nonMediaUsed - appsBytes).coerceAtLeast(0L))
+            val otherBytes = max(0L, usedBytes - (
+                photosBytes + videosBytes + audioBytes + docBytes + downloadBytes + appsBytes + systemBytes
+                ))
 
             StorageOverview(
                 totalBytes = totalBytes,
@@ -450,19 +459,22 @@ class StorageScanner(private val context: Context) {
                 audioBytes = audioBytes,
                 downloadsBytes = downloadBytes,
                 appsBytes = appsBytes,
-                systemBytes = systemBytes
+                systemBytes = systemBytes,
+                otherBytes = otherBytes
             )
         } catch (e: Exception) {
             StorageOverview()
         }
     }
 
-    private fun queryInstalledAppsBytes(): Long {
+    private fun queryInstalledAppsBytes(systemAppsOnly: Boolean? = null): Long {
         return try {
             val pm = context.packageManager
             val apps = pm.getInstalledApplications(0)
             var totalAppApkBytes = 0L
             for (app in apps) {
+                val isSystemApp = app.flags and ApplicationInfo.FLAG_SYSTEM != 0
+                if (systemAppsOnly != null && isSystemApp != systemAppsOnly) continue
                 val source = app.sourceDir
                 if (!source.isNullOrBlank()) {
                     val file = File(source)
@@ -571,17 +583,15 @@ class StorageScanner(private val context: Context) {
         val usedBytes = max(0L, totalBytes - freeBytes)
         val mediaSum = photosBytes + videosBytes + audioBytes + docBytes + dlBytes
         val nonMediaUsed = max(0L, usedBytes - mediaSum)
-        val measuredAppApkBytes = queryInstalledAppsBytes()
-        val estimatedAppsBytes = if (measuredAppApkBytes > 0L) {
-            val withData = (measuredAppApkBytes * 1.8).toLong()
-            withData.coerceIn(measuredAppApkBytes, maxOf(1L, nonMediaUsed - 8L * 1024 * 1024 * 1024))
-        } else {
-            (nonMediaUsed * 0.56).toLong()
-        }
-        val systemBytes = max(0L, nonMediaUsed - estimatedAppsBytes)
-        val appsBytes = estimatedAppsBytes
+        val userAppApkBytes = queryInstalledAppsBytes(systemAppsOnly = false)
+        val systemApkBytes = queryInstalledAppsBytes(systemAppsOnly = true)
+        val appsBytes = (userAppApkBytes * 1.8).toLong().coerceIn(0L, nonMediaUsed)
+        val systemBytes = systemApkBytes.coerceIn(0L, (nonMediaUsed - appsBytes).coerceAtLeast(0L))
+        val otherBytes = max(0L, usedBytes - (
+            photosBytes + videosBytes + audioBytes + docBytes + dlBytes + appsBytes + systemBytes
+            ))
 
-        val maxCategory = max(1L, maxOf(photosBytes, videosBytes, audioBytes, docBytes, dlBytes, appsBytes, systemBytes))
+        val maxCategory = max(1L, maxOf(photosBytes, videosBytes, audioBytes, docBytes, dlBytes, appsBytes, systemBytes, otherBytes))
 
         return listOf(
             CategoryItem(
@@ -646,6 +656,15 @@ class StorageScanner(private val context: Context) {
                 fileCountLabel = "Android OS",
                 progressFraction = (systemBytes.toFloat() / maxCategory).coerceIn(0.08f, 1f),
                 category = FileCategory.SYSTEM
+            ),
+            CategoryItem(
+                title = "Other",
+                count = 0,
+                bytes = otherBytes,
+                formattedSize = formatBytes(otherBytes),
+                fileCountLabel = "Miscellaneous files",
+                progressFraction = (otherBytes.toFloat() / maxCategory).coerceIn(0.08f, 1f),
+                category = FileCategory.OTHER
             )
         )
     }

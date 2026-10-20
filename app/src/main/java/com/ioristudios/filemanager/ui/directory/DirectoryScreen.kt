@@ -122,6 +122,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -142,6 +143,12 @@ import com.ioristudios.filemanager.ui.components.ScopedStorageRestrictedAccessDi
 import com.ioristudios.filemanager.data.ProtectionLevel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -195,6 +202,8 @@ fun DirectoryScreen(
 
     var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
     val isSelectionMode = selectedPaths.isNotEmpty()
+    val checkboxBounds = remember { mutableStateMapOf<String, Rect>() }
+    var fileListBounds by remember { mutableStateOf(Rect.Zero) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showBatchCompressDialog by remember { mutableStateOf(false) }
 
@@ -202,10 +211,10 @@ fun DirectoryScreen(
         selectedPaths = emptySet()
     }
 
-    BackHandler(enabled = isSelectionMode || state.breadcrumbs.isNotEmpty()) {
+    BackHandler(enabled = isSelectionMode || state.breadcrumbs.size > 1) {
         if (isSelectionMode) {
             selectedPaths = emptySet()
-        } else if (state.breadcrumbs.isNotEmpty()) {
+        } else if (state.breadcrumbs.size > 1) {
             viewModel.navigateUpDirectory()
         }
     }
@@ -542,7 +551,43 @@ fun DirectoryScreen(
                                 state = listState,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = 16.dp)
+                                    .onGloballyPositioned { fileListBounds = it.boundsInRoot() }
+                                    .pointerInput(isSelectionMode, checkboxBounds.size, selectedPaths) {
+                                        if (!isSelectionMode) return@pointerInput
+                                        var affectedPaths = mutableSetOf<String>()
+                                        var selectMode = true
+
+                                        fun itemAt(position: Offset): DirectoryItem? {
+                                            val rootPosition = Offset(
+                                                fileListBounds.left + position.x,
+                                                fileListBounds.top + position.y
+                                            )
+                                            return state.items.firstOrNull { item ->
+                                                checkboxBounds[item.path]?.contains(rootPosition) == true
+                                            }
+                                        }
+
+                                        detectDragGestures(
+                                            onDragStart = { position ->
+                                                val firstItem = itemAt(position) ?: return@detectDragGestures
+                                                selectMode = firstItem.path !in selectedPaths
+                                                affectedPaths = mutableSetOf(firstItem.path)
+                                                selectedPaths = if (selectMode) selectedPaths + firstItem.path else selectedPaths - firstItem.path
+                                                haptics.trigger(HapticType.SELECTION_NOTCH)
+                                            },
+                                            onDragEnd = { affectedPaths = mutableSetOf() },
+                                            onDragCancel = { affectedPaths = mutableSetOf() },
+                                            onDrag = { change, _ ->
+                                                val item = itemAt(change.position) ?: return@detectDragGestures
+                                                if (affectedPaths.add(item.path)) {
+                                                    selectedPaths = if (selectMode) selectedPaths + item.path else selectedPaths - item.path
+                                                    haptics.trigger(HapticType.SELECTION_NOTCH)
+                                                }
+                                                change.consume()
+                                            }
+                                        )
+                                    },
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 item { Spacer(modifier = Modifier.height(2.dp)) }
@@ -559,6 +604,7 @@ fun DirectoryScreen(
                                     showFileExtensions = settingsState.showFileExtensions,
                                     isSelectionMode = isSelectionMode,
                                     isSelected = isSelected,
+                                        onCheckboxBoundsChanged = { bounds -> checkboxBounds[item.path] = bounds },
                                         onToggleSelect = {
                                             selectedPaths = if (isSelected) {
                                                 selectedPaths - item.path
@@ -1049,6 +1095,7 @@ fun DirectoryItemRow(
     showFileExtensions: Boolean = true,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    onCheckboxBoundsChanged: ((Rect) -> Unit)? = null,
     onToggleSelect: () -> Unit = {},
     onLongClick: () -> Unit = {},
     onClick: () -> Unit,
@@ -1097,6 +1144,7 @@ fun DirectoryItemRow(
             .combinedClickable(
                 onClick = {
                     if (isSelectionMode) {
+                        haptics.trigger(HapticType.SELECTION_NOTCH)
                         onToggleSelect()
                     } else {
                         if (item.isDirectory) {
@@ -1132,7 +1180,8 @@ fun DirectoryItemRow(
                 ) {
                     SelectionCheckbox(
                         isSelected = isSelected,
-                        onClick = onToggleSelect
+                        onClick = onToggleSelect,
+                        onBoundsChanged = onCheckboxBoundsChanged
                     )
                 }
 

@@ -185,20 +185,6 @@ fun SettingsScreen(
             )
 
             SettingsCard(modifier = Modifier.staggeredEntrance(index = 1)) {
-                // Recycle Bin / Trash Toggle
-                SettingsToggleRow(
-                    icon = Icons.Default.DeleteOutline,
-                    title = "Recycle Bin / Trash",
-                    subtitle = "Retain deleted items for 30 days",
-                    checked = state.recycleBinEnabled,
-                    onCheckedChange = { checked ->
-                        viewModel.toggleRecycleBin(checked)
-                        showMessage(if (checked) "Recycle bin enabled" else "Direct deletion active")
-                    }
-                )
-
-                HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.5f), thickness = 0.8.dp)
-
                 // Safe Folder & Encryption Row (Coming Soon per user decision)
                 Row(
                     modifier = Modifier
@@ -463,46 +449,6 @@ fun SettingsScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.3f), thickness = 0.8.dp)
-
-                    // Check for updates action row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showMessage("You are using the latest version (v2.4.0)") }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Check updates",
-                                tint = FilesTheme.colors.primaryAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "Check for updates",
-                                fontFamily = OutfitFontFamily,
-                                color = FilesTheme.colors.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Check",
-                            tint = FilesTheme.colors.textMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    HorizontalDivider(color = FilesTheme.colors.cardBorder.copy(alpha = 0.3f), thickness = 0.8.dp)
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -802,7 +748,7 @@ fun GlassSwitch(
     val motion = LocalMotionSensitivity.current
 
     val thumbOffset by animateDpAsState(
-        targetValue = if (checked) 22.dp else 2.dp,
+        targetValue = if (checked) 22.dp else 0.dp,
         animationSpec = if (motion.isReducedMotion) tween(80) else androidx.compose.animation.core.spring(
             dampingRatio = 0.68f,
             stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
@@ -831,7 +777,7 @@ fun GlassSwitch(
                 hapticType = HapticType.SWITCH_TOGGLE,
                 onClick = { onCheckedChange(!checked) }
             )
-            .padding(vertical = 3.dp),
+            .padding(horizontal = 2.dp, vertical = 3.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Box(

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -97,6 +98,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.ContentScale
 import com.ioristudios.filemanager.ui.components.ApkIconManager
 import com.ioristudios.filemanager.ui.components.FileOperationProgressModal
+import com.ioristudios.filemanager.ui.components.FloatingProgressPill
 import com.ioristudios.filemanager.ui.components.FileDetailsModalDialog
 import com.ioristudios.filemanager.ui.components.GlassContextMenu
 import com.ioristudios.filemanager.ui.components.GlassIconButton
@@ -142,6 +144,7 @@ import com.ioristudios.filemanager.theme.BorderSubtle
 import com.ioristudios.filemanager.theme.CardBorderPurple
 import com.ioristudios.filemanager.theme.*
 import com.ioristudios.filemanager.ui.directory.DirectoryScreen
+import com.ioristudios.filemanager.ui.cleanup.CleanupScreen
 import com.ioristudios.filemanager.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.SdCard
@@ -167,6 +170,7 @@ fun MainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var userDismissedModalToBackground by remember { mutableStateOf(false) }
+    var showCleanup by remember { mutableStateOf(false) }
 
     LaunchedEffect(fileOpProgress.operationId) {
         userDismissedModalToBackground = false
@@ -179,7 +183,11 @@ fun MainScreen(
     }
 
     // Handle back button for subfolder navigation, files tab, search tab, and settings tab return
-    BackHandler(enabled = selectedTab != NavTab.HOME) {
+    BackHandler(enabled = showCleanup) {
+        showCleanup = false
+    }
+
+    BackHandler(enabled = selectedTab != NavTab.HOME && !showCleanup) {
         when (selectedTab) {
             NavTab.FILES -> {
                 if (!viewModel.navigateUpDirectory()) {
@@ -241,6 +249,7 @@ fun MainScreen(
                         onViewAllClick = { viewModel.selectTab(NavTab.FILES) },
                         onSearchClick = { viewModel.selectTab(NavTab.SEARCH) },
                         onSettingsClick = { viewModel.selectTab(NavTab.SETTINGS) },
+                        onCleanupClick = { showCleanup = true },
                         onSelectVolume = { volumeId -> viewModel.selectStorageVolume(volumeId) }
                     )
                 }
@@ -321,6 +330,26 @@ fun MainScreen(
                 }
             )
         }
+
+        AnimatedVisibility(
+            visible = userDismissedModalToBackground && fileOpProgress.isActive,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = 10.dp)
+        ) {
+            FloatingProgressPill(
+                progress = fileOpProgress,
+                onClick = { userDismissedModalToBackground = false }
+            )
+        }
+
+        if (showCleanup) {
+            CleanupScreen(
+                onBack = { showCleanup = false },
+                onComplete = showMessage
+            )
+        }
     }
 }
 
@@ -332,6 +361,7 @@ fun HomeScreenContent(
     onViewAllClick: () -> Unit,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onCleanupClick: () -> Unit,
     onSelectVolume: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -394,7 +424,7 @@ fun HomeScreenContent(
                 CleanupRecommendationCard(
                     reclaimableFormatted = state.reclaimableFormatted,
                     onCleanupClick = {
-                        showMessage("Deep clean engine coming soon in next update!")
+                        onCleanupClick()
                     }
                 )
             }
@@ -986,6 +1016,7 @@ fun StorageHeroCard(
                     CategoryMetricRow("Downloads", formatShortBytes(storage.downloadsBytes), ChartDownloadsAmber)
                     CategoryMetricRow("Apps", formatShortBytes(storage.appsBytes), ChartAppsOrange)
                     CategoryMetricRow("System", formatShortBytes(storage.systemBytes), ChartSystemSlate)
+                    CategoryMetricRow("Other", formatShortBytes(storage.otherBytes), Color(0xFF6366F1))
                     CategoryMetricRow("Available", formatShortBytes(storage.freeBytes), ChartAvailableEmerald)
                 }
             }
@@ -1231,6 +1262,23 @@ fun CategoryCard(
                 FolderAmberLightBg,
                 Color(0xFFD97706),
                 Color(0xFFB45309)
+            )
+        }
+        FileCategory.OTHER -> if (FilesTheme.isDark) {
+            CategoryVisuals(
+                Icons.Default.Folder,
+                Color(0xFF818CF8),
+                Color(0xFF6366F1).copy(alpha = 0.2f),
+                Color(0xFF818CF8),
+                Color(0xFF4338CA)
+            )
+        } else {
+            CategoryVisuals(
+                Icons.Default.Folder,
+                Color(0xFF4F46E5),
+                Color(0xFFE0E7FF),
+                Color(0xFF4F46E5),
+                Color(0xFF3730A3)
             )
         }
         else -> if (item.title.equals("System", ignoreCase = true)) {

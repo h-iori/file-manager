@@ -27,7 +27,6 @@ interface DataRepository {
     fun setThemeMode(mode: ThemeMode)
     fun setShowHiddenFiles(enabled: Boolean)
     fun setShowFileExtensions(enabled: Boolean)
-    fun setRecycleBinEnabled(enabled: Boolean)
 
     // Clipboard and File Operations
     fun copyItems(paths: List<String>, sourceDir: String)
@@ -172,6 +171,10 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
                 val parentInner = inner.substringBeforeLast('/')
                 loadDirectory("$archivePath::$parentInner")
                 return true
+            } else if (inner.isNotEmpty()) {
+                // Return to the archive's root before leaving the archive itself.
+                loadDirectory(archivePath)
+                return true
             } else {
                 val parentOfArchive = File(archivePath).parentFile?.absolutePath ?: root
                 loadDirectory(parentOfArchive)
@@ -214,11 +217,6 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
 
     override fun setShowFileExtensions(enabled: Boolean) {
         prefs.setShowFileExtensions(enabled)
-        _settingsState.value = prefs.getSettings()
-    }
-
-    override fun setRecycleBinEnabled(enabled: Boolean) {
-        prefs.setRecycleBinEnabled(enabled)
         _settingsState.value = prefs.getSettings()
     }
 

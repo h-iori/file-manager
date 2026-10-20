@@ -9,6 +9,5 @@ enum class ThemeMode {
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.DARK,
     val showHiddenFiles: Boolean = true,
-    val showFileExtensions: Boolean = true,
-    val recycleBinEnabled: Boolean = true
+    val showFileExtensions: Boolean = true
 )

@@ -107,7 +107,7 @@ object ArchiveManager {
                         if (!directItems.containsKey(dirName)) {
                             directItems[dirName] = DirectoryItem(
                                 name = dirName,
-                                path = "$prefix$dirName",
+                                path = "${archiveFile.absolutePath}::$prefix$dirName",
                                 isDirectory = true,
                                 sizeBytes = 0L,
                                 formattedSize = "",
@@ -122,7 +122,7 @@ object ArchiveManager {
                         val isDir = entry.isDirectory
                         directItems[relative] = DirectoryItem(
                             name = relative,
-                            path = "$prefix$relative",
+                            path = "${archiveFile.absolutePath}::$prefix$relative",
                             isDirectory = isDir,
                             sizeBytes = if (isDir) 0L else entry.size.coerceAtLeast(0L),
                             formattedSize = if (isDir) "" else formatBytes(entry.size.coerceAtLeast(0L)),
@@ -168,7 +168,7 @@ object ArchiveManager {
                         if (!directItems.containsKey(dirName)) {
                             directItems[dirName] = DirectoryItem(
                                 name = dirName,
-                                path = "$prefix$dirName",
+                                path = "${archiveFile.absolutePath}::$prefix$dirName",
                                 isDirectory = true,
                                 sizeBytes = 0L,
                                 formattedSize = "",
@@ -183,7 +183,7 @@ object ArchiveManager {
                         val isDir = entry.isDirectory
                         directItems[relative] = DirectoryItem(
                             name = relative,
-                            path = "$prefix$relative",
+                            path = "${archiveFile.absolutePath}::$prefix$relative",
                             isDirectory = isDir,
                             sizeBytes = if (isDir) 0L else entry.size.coerceAtLeast(0L),
                             formattedSize = if (isDir) "" else formatBytes(entry.size.coerceAtLeast(0L)),

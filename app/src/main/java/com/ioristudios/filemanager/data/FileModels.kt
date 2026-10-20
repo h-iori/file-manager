@@ -10,7 +10,8 @@ enum class FileCategory {
     ARCHIVE,
     SPREADSHEET,
     GENERIC,
-    SYSTEM
+    SYSTEM,
+    OTHER
 }
 
 enum class StorageVolumeType {
@@ -48,7 +49,8 @@ data class StorageOverview(
     val audioBytes: Long = 0L,
     val downloadsBytes: Long = 0L,
     val appsBytes: Long = 0L,
-    val systemBytes: Long = 0L
+    val systemBytes: Long = 0L,
+    val otherBytes: Long = 0L
 )
 
 data class CategoryItem(

@@ -116,10 +116,6 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
         repository.setShowFileExtensions(enabled)
     }
 
-    fun toggleRecycleBin(enabled: Boolean) {
-        repository.setRecycleBinEnabled(enabled)
-    }
-
     // Clipboard & File Operations
     fun copyItem(path: String, sourceDir: String) {
         repository.copyItems(listOf(path), sourceDir)

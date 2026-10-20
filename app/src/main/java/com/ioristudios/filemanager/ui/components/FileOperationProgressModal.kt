@@ -489,3 +489,61 @@ fun FileOperationProgressModal(
         }
     }
 }
+
+/** Compact operation status that remains visible after the full dialog is sent to background. */
+@Composable
+fun FloatingProgressPill(
+    progress: FileOpProgress,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val icon = when (progress.type) {
+        FileOpType.COPY -> Icons.Default.ContentCopy
+        FileOpType.MOVE -> Icons.Default.ContentCut
+        FileOpType.DELETE -> Icons.Default.Delete
+        FileOpType.COMPRESS -> Icons.Default.Archive
+        FileOpType.EXTRACT -> Icons.Default.Unarchive
+    }
+    val accent = if (progress.status == FileOpStatus.PAUSED) Color(0xFFF59E0B) else ElectricPurple
+    val percent = (progress.progressFraction * 100).toInt().coerceIn(0, 100)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth(0.9f)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (FilesTheme.isDark) Color(0xF018102B) else Color(0xFFF9F5FF))
+            .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    text = progress.title.ifBlank { "File operation" },
+                    color = FilesTheme.colors.textPrimary,
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (progress.isIndeterminate) "Working" else "$percent%",
+                    color = accent,
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            LiquidShimmerProgressBar(
+                progress = progress.progressFraction,
+                modifier = Modifier.fillMaxWidth(),
+                height = 4.dp,
+                barColors = listOf(accent, Color(0xFFC084FC))
+            )
+        }
+    }
+}
