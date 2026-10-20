@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
@@ -505,7 +506,9 @@ fun FloatingProgressPill(
         FileOpType.EXTRACT -> Icons.Default.Unarchive
     }
     val accent = if (progress.status == FileOpStatus.PAUSED) Color(0xFFF59E0B) else ElectricPurple
-    val percent = (progress.progressFraction * 100).toInt().coerceIn(0, 100)
+    // Use one normalized value for both the number and the bar so the pill stays in sync.
+    val normalizedProgress = progress.progressFraction.coerceIn(0f, 1f)
+    val percent = (normalizedProgress * 100f).toInt().coerceIn(0, 100)
 
     Row(
         modifier = modifier
@@ -520,9 +523,13 @@ fun FloatingProgressPill(
     ) {
         Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = progress.title.ifBlank { "File operation" },
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
                     color = FilesTheme.colors.textPrimary,
                     fontFamily = OutfitFontFamily,
                     fontSize = 12.sp,
@@ -530,20 +537,38 @@ fun FloatingProgressPill(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // Reserve a fixed-width slot: 9%, 10%, and 100% must not move the title.
                 Text(
                     text = if (progress.isIndeterminate) "Working" else "$percent%",
+                    modifier = Modifier.width(56.dp),
                     color = accent,
                     fontFamily = OutfitFontFamily,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.End
                 )
             }
-            LiquidShimmerProgressBar(
-                progress = progress.progressFraction,
-                modifier = Modifier.fillMaxWidth(),
-                height = 4.dp,
-                barColors = listOf(accent, Color(0xFFC084FC))
-            )
+            // Avoid the spring-animated shared bar here. Its fill can lag behind the live
+            // percent during frequent operation updates, making the compact pill look wrong.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (FilesTheme.isDark) Color(0x33FFFFFF) else Color(0x1A000000))
+            ) {
+                if (!progress.isIndeterminate) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(normalizedProgress)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Brush.horizontalGradient(listOf(accent, Color(0xFFC084FC))))
+                    )
+                }
+            }
         }
     }
 }
