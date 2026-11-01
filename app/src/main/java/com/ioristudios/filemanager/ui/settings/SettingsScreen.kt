@@ -3,6 +3,25 @@ package com.ioristudios.filemanager.ui.settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -374,94 +393,150 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 4: About Files
+            // Section 4: About & Creator (AnyDoc Signature Design)
             SettingsSectionHeader(
-                title = "About Files",
-                tag = "IORI STUDIOS"
+                title = "About & Creator",
+                tag = "DEVELOPER"
             )
 
-            SettingsCard(modifier = Modifier.staggeredEntrance(index = 3)) {
+            // Animated Creator Avatar with Rotating Halo & Orbiting Satellites
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CreatorAvatarWithAnimation()
+            }
+
+            // Creator Name, Bio & Location
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+            ) {
+                Text(
+                    text = "Harsh Swatantra Upadhyay",
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = FilesTheme.colors.textPrimary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "AI Engineer · Tech Enthusiast",
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFA855F7),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Mumbai, India",
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.sp,
+                    color = FilesTheme.colors.textSecondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            // About Me Card
+            SettingsCard(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // App Squircle Avatar with glowing radiant aura
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .shadow(20.dp, RoundedCornerShape(18.dp), ambientColor = PurpleContainer, spotColor = PurpleContainer)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(FilesTheme.colors.headerIconBgStart, FilesTheme.colors.headerIconBgEnd)
-                                )
-                            )
-                            .border(1.2.dp, FilesTheme.colors.headerIconBorder, RoundedCornerShape(18.dp)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.app_brand_logo),
-                            contentDescription = "Files Logo",
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                        Icon(
+                            imageVector = Icons.Filled.Favorite,
+                            contentDescription = null,
+                            tint = Color(0xFFA855F7),
+                            modifier = Modifier.size(18.dp)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "Files by IORI STUDIOS",
-                        fontFamily = OrbitronFontFamily,
-                        color = FilesTheme.colors.textPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Text(
-                        text = "High-Performance Obsidian Edition",
-                        fontFamily = OutfitFontFamily,
-                        color = FilesTheme.colors.textSecondary,
-                        fontSize = 12.5.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Version Pill
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (FilesTheme.isDark) Color(0xFF1B1335) else Color(0xFFEDE4FF))
-                            .border(1.dp, FilesTheme.colors.settingCardBorder, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 14.dp, vertical = 4.dp)
-                    ) {
                         Text(
-                            text = "v2.4.0 (Build 8291)",
+                            text = "About Me",
                             fontFamily = OutfitFontFamily,
-                            color = FilesTheme.colors.primaryAccent,
-                            fontSize = 11.5.sp,
+                            fontSize = 15.sp,
+                            color = FilesTheme.colors.textPrimary,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Footer note
                     Text(
-                        text = "CRAFTED WITH PRECISION BY IORI STUDIOS",
-                        fontFamily = OrbitronFontFamily,
-                        color = FilesTheme.colors.textMuted.copy(alpha = 0.65f),
-                        fontSize = 9.sp,
-                        letterSpacing = 1.2.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = "I am an AI Engineer and Tech Enthusiast based in Mumbai, India. " +
+                            "File Manager was independently designed and developed end to end by me, " +
+                            "with a focus on high-performance file management, clean architecture, and a polished user experience. " +
+                            "I build practical, production-minded software with a strong emphasis on purpose, precision, and quality.",
+                        fontFamily = OutfitFontFamily,
+                        fontSize = 13.sp,
+                        color = FilesTheme.colors.textSecondary,
+                        lineHeight = 19.sp
                     )
                 }
+            }
+
+            // App Info Card
+            SettingsCard(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = null,
+                            tint = Color(0xFFA855F7),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "App Info",
+                            fontFamily = OutfitFontFamily,
+                            fontSize = 15.sp,
+                            color = FilesTheme.colors.textPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    AboutInfoRow("App Name", "File Manager")
+                    AboutInfoRow("Contact", "harshupadhyay9702@gmail.com")
+                    AboutInfoRow("GitHub", "https://www.github.com/h-iori")
+                }
+            }
+
+            // Footer note
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Built independently 💪 with purpose",
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.5.sp,
+                    color = FilesTheme.colors.textMuted,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "IORI STUDIOS · ALL RIGHTS RESERVED",
+                    fontFamily = OrbitronFontFamily,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.2.sp,
+                    color = FilesTheme.colors.textMuted.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -817,6 +892,142 @@ fun HapticPlaygroundChip(
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
+        )
+    }
+}
+
+
+/**
+ * Animated Creator Avatar with rotating gradient sweep halo, pulsating ambient glow,
+ * and 4 orbiting satellite particle dots inspired by AnyDoc.
+ */
+@Composable
+fun CreatorAvatarWithAnimation(
+    modifier: Modifier = Modifier
+) {
+    val infinite = rememberInfiniteTransition(label = "creatorAvatar")
+    val ringRotation by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ringRotation"
+    )
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+
+    val neonPurple = Color(0xFFA855F7)
+    val neonGlow = Color(0xFFC084FC)
+    val neonLight = Color(0xFFE9D5FF)
+    val successGreen = Color(0xFF10B981)
+    val surfaceDark = if (FilesTheme.isDark) Color(0xFF0F0B1E) else Color(0xFFF5F3FF)
+    val surfaceDarkElevated = if (FilesTheme.isDark) Color(0xFF1E1438) else Color(0xFFE9D5FF)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+    ) {
+        // Rotating sweep gradient arc
+        Canvas(
+            modifier = Modifier
+                .size(164.dp)
+                .rotate(ringRotation)
+        ) {
+            drawArc(
+                brush = Brush.sweepGradient(
+                    listOf(
+                        neonPurple.copy(alpha = 0f),
+                        neonPurple.copy(alpha = 0.95f),
+                        neonPurple.copy(alpha = 0f)
+                    )
+                ),
+                startAngle = 0f,
+                sweepAngle = 235f,
+                useCenter = false,
+                style = Stroke(width = 3.5f, cap = StrokeCap.Round)
+            )
+        }
+
+        // Soft pulsating ambient glow circle
+        Canvas(modifier = Modifier.size(140.dp)) {
+            drawCircle(
+                color = neonGlow.copy(alpha = glowAlpha * 0.26f),
+                radius = size.minDimension / 2f,
+                style = Stroke(width = 20f)
+            )
+        }
+
+        // 4 Orbiting colored satellite particles
+        Canvas(modifier = Modifier.size(164.dp)) {
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val orbitRadius = size.minDimension / 2f - 10f
+            val colors = listOf(neonPurple, successGreen, neonLight, neonGlow)
+            val baseAngles = listOf(0f, 90f, 180f, 270f)
+            baseAngles.forEachIndexed { i, base ->
+                val rad = Math.toRadians((base + ringRotation * 0.38f).toDouble())
+                val x = centerX + orbitRadius * cos(rad).toFloat()
+                val y = centerY + orbitRadius * sin(rad).toFloat()
+                drawCircle(color = colors[i], radius = 5f, center = Offset(x, y))
+            }
+        }
+
+        // Center Creator Profile Image Surface
+        Surface(
+            shape = CircleShape,
+            color = surfaceDark,
+            border = BorderStroke(3.dp, neonPurple.copy(alpha = 0.62f)),
+            modifier = Modifier.size(118.dp)
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.background(
+                    Brush.radialGradient(
+                        listOf(surfaceDarkElevated, surfaceDark)
+                    )
+                )
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.dev_profile),
+                    contentDescription = "Profile photo of Harsh Swatantra Upadhyay",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontFamily = OutfitFontFamily,
+            fontSize = 12.5.sp,
+            color = FilesTheme.colors.textSecondary
+        )
+        Text(
+            text = value,
+            fontFamily = OutfitFontFamily,
+            fontSize = 12.5.sp,
+            color = FilesTheme.colors.textPrimary,
+            fontWeight = FontWeight.Medium
         )
     }
 }
