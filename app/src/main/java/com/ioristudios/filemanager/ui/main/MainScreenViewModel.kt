@@ -1,6 +1,7 @@
 package com.ioristudios.filemanager.ui.main
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ioristudios.filemanager.data.ArchiveType
@@ -20,6 +21,8 @@ import com.ioristudios.filemanager.data.SearchUiState
 import com.ioristudios.filemanager.data.SettingsUiState
 import com.ioristudios.filemanager.data.SortOption
 import com.ioristudios.filemanager.data.ThemeMode
+import com.ioristudios.filemanager.sharing.UriPathResolver
+import com.ioristudios.filemanager.sharing.engine.ShareTransferManager
 import com.ioristudios.filemanager.ui.components.AppFileOpener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +38,28 @@ enum class NavTab {
     SETTINGS
 }
 
-class MainScreenViewModel(private val repository: DataRepository) : ViewModel() {
+class MainScreenViewModel(
+    private val repository: DataRepository,
+    private val context: Context? = null
+) : ViewModel() {
+
+    private val appContext = context?.applicationContext
+
+    val shareTransferManager: ShareTransferManager by lazy {
+        ShareTransferManager(appContext ?: error("Application context required for ShareTransferManager"))
+    }
+
+    fun resolveUriToPath(uri: Uri): String? {
+        val ctx = appContext ?: return null
+        return UriPathResolver.resolveUriToPath(ctx, uri)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            shareTransferManager.stopAll()
+        } catch (_: Exception) {}
+    }
     val homeUiState: StateFlow<HomeScreenData> = repository.homeScreenData
     val directoryUiState: StateFlow<DirectoryScreenState> = repository.directoryState
     val settingsUiState: StateFlow<SettingsUiState> = repository.settingsState

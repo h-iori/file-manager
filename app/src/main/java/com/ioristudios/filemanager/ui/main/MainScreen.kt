@@ -114,6 +114,7 @@ import com.ioristudios.filemanager.haptics.HapticType
 import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.ui.components.StorageDonutChart
 import com.ioristudios.filemanager.ui.components.shareFileToSystem
+import com.ioristudios.filemanager.ui.share.ShareScreen
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -282,10 +283,9 @@ fun MainScreen(
                     )
                 }
                 NavTab.SHARE -> {
-                    PlaceholderScreen(
-                        title = "Share",
-                        subtitle = "Wireless high-speed file transfer coming soon",
-                        icon = Icons.Default.Share
+                    ShareScreen(
+                        viewModel = viewModel,
+                        showMessage = showMessage
                     )
                 }
                 NavTab.SETTINGS -> {
@@ -309,11 +309,7 @@ fun MainScreen(
             FloatingBottomNav(
                 selectedTab = selectedTab,
                 onTabSelect = { tab ->
-                    if (tab == NavTab.SHARE) {
-                        showMessage("Wireless share coming soon")
-                    } else {
-                        viewModel.selectTab(tab)
-                    }
+                    viewModel.selectTab(tab)
                 }
             )
         }

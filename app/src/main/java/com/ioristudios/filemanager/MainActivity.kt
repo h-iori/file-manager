@@ -28,6 +28,8 @@ import androidx.lifecycle.lifecycleScope
 import com.ioristudios.filemanager.data.DefaultDataRepository
 import com.ioristudios.filemanager.haptics.HapticFeedbackManager
 import com.ioristudios.filemanager.haptics.LocalAppHaptics
+import com.ioristudios.filemanager.sharing.UriPathResolver
+import com.ioristudios.filemanager.sharing.engine.ShareMode
 import com.ioristudios.filemanager.theme.FilesTheme
 import com.ioristudios.filemanager.ui.main.MainScreen
 import com.ioristudios.filemanager.ui.main.MainScreenViewModel
@@ -45,7 +47,7 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MainScreenViewModel(repository) as T
+                return MainScreenViewModel(repository, applicationContext) as T
             }
         }
     }
@@ -105,21 +107,78 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
-        val action = intent.action
-        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) return
+        val action = intent.action ?: return
 
-        val uri: Uri? = intent.data
-            ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
-            ?: intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        when (action) {
+            Intent.ACTION_SEND -> {
+                val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                } ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri ?: intent.data
 
-        if (uri == null) return
+                if (uri != null) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val path = UriPathResolver.resolveUriToPath(applicationContext, uri)
+                        if (path != null) {
+                            val file = File(path)
+                            withContext(Dispatchers.Main) {
+                                viewModel.shareTransferManager.setSelectedFiles(listOf(file))
+                                viewModel.shareTransferManager.setShareMode(ShareMode.SEND)
+                                viewModel.selectTab(NavTab.SHARE)
+                            }
+                        }
+                    }
+                }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris: ArrayList<Uri>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+                }
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            val archiveFile = resolveOrCacheArchive(uri)
-            if (archiveFile != null && archiveFile.exists()) {
-                withContext(Dispatchers.Main) {
-                    viewModel.selectTab(NavTab.FILES)
-                    viewModel.openDirectory(archiveFile.absolutePath)
+                val allUris = mutableListOf<Uri>()
+                if (uris != null) {
+                    allUris.addAll(uris)
+                } else {
+                    intent.clipData?.let { clip ->
+                        for (i in 0 until clip.itemCount) {
+                            clip.getItemAt(i)?.uri?.let { allUris.add(it) }
+                        }
+                    }
+                }
+
+                if (allUris.isNotEmpty()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val resolvedFiles = allUris.mapNotNull { u ->
+                            UriPathResolver.resolveUriToPath(applicationContext, u)?.let { File(it) }
+                        }
+                        if (resolvedFiles.isNotEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                viewModel.shareTransferManager.setSelectedFiles(resolvedFiles)
+                                viewModel.shareTransferManager.setShareMode(ShareMode.SEND)
+                                viewModel.selectTab(NavTab.SHARE)
+                            }
+                        }
+                    }
+                }
+            }
+            Intent.ACTION_VIEW -> {
+                val uri: Uri? = intent.data
+                    ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+                if (uri != null) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val archiveFile = resolveOrCacheArchive(uri)
+                        if (archiveFile != null && archiveFile.exists()) {
+                            withContext(Dispatchers.Main) {
+                                viewModel.selectTab(NavTab.FILES)
+                                viewModel.openDirectory(archiveFile.absolutePath)
+                            }
+                        }
+                    }
                 }
             }
         }
