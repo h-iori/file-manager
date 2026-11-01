@@ -41,6 +41,8 @@ interface DataRepository {
     // Enterprise Search
     suspend fun search(query: String, category: SearchFilterCategory = SearchFilterCategory.ALL)
     fun setSearchCategory(category: SearchFilterCategory)
+    fun setSearchScope(scopePath: String?, displayName: String?)
+    fun clearSearchScope()
     fun clearSearch()
 
     // ZArchiver Power Features
@@ -340,6 +342,14 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
 
     override fun setSearchCategory(category: SearchFilterCategory) {
         searchEngine.setFilterCategory(category)
+    }
+
+    override fun setSearchScope(scopePath: String?, displayName: String?) {
+        searchEngine.setScope(scopePath, displayName)
+    }
+
+    override fun clearSearchScope() {
+        searchEngine.clearScope()
     }
 
     override fun clearSearch() {

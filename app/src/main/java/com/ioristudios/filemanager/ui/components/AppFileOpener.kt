@@ -1,5 +1,6 @@
 package com.ioristudios.filemanager.ui.components
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -82,10 +83,19 @@ object AppFileOpener {
 
         if (isAnyDocInstalled) {
             try {
+                // Explicitly grant read and write URI permissions to AnyDoc
+                context.grantUriPermission(
+                    ANYDOC_PACKAGE,
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, mimeType)
                     setPackage(ANYDOC_PACKAGE)
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                    clipData = ClipData.newRawUri("", uri)
+                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                            Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(intent)
                 return
@@ -98,10 +108,14 @@ object AppFileOpener {
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mimeType)
+                clipData = ClipData.newRawUri("", uri)
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val chooser = Intent.createChooser(intent, "Open document with...").apply {
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
             }
-            val chooser = Intent.createChooser(intent, "Open document with...")
-            chooser.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             context.startActivity(chooser)
         } catch (e: Exception) {
             showMessage("No document viewer application available")
@@ -117,10 +131,14 @@ object AppFileOpener {
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mimeType)
+                clipData = ClipData.newRawUri("", uri)
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val chooser = Intent.createChooser(intent, "Open with...").apply {
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
             }
-            val chooser = Intent.createChooser(intent, "Open with...")
-            chooser.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             context.startActivity(chooser)
         } catch (e: Exception) {
             showMessage("No application found to open this file: ${e.message}")

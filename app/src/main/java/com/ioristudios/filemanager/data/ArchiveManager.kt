@@ -412,12 +412,45 @@ object ArchiveManager {
             outputFile.parentFile?.mkdirs()
             if (type == ArchiveType.ZIP) {
                 ZipFile(archiveFile).use { zip ->
-                    val entry = zip.getEntry(cleanEntry)
-                        ?: return@withContext Result.failure(NoSuchElementException("Entry $cleanEntry not found"))
+                    var entry: ZipEntry? = zip.getEntry(cleanEntry)
+                    if (entry == null) {
+                        val entries = zip.entries()
+                        while (entries.hasMoreElements()) {
+                            val candidate = entries.nextElement()
+                            val candName = candidate.name.trimStart('/')
+                            if (candName == cleanEntry || candName.equals(cleanEntry, ignoreCase = true)) {
+                                entry = candidate
+                                break
+                            }
+                        }
+                    }
+                    if (entry == null) {
+                        return@withContext Result.failure(NoSuchElementException("Entry $cleanEntry not found"))
+                    }
                     zip.getInputStream(entry).use { inStream ->
                         FileOutputStream(outputFile).use { outStream ->
                             inStream.copyTo(outStream)
                         }
+                    }
+                }
+                Result.success(outputFile)
+            } else if (type == ArchiveType.TAR || type == ArchiveType.TAR_GZ || type == ArchiveType.TAR_BZ2) {
+                openTarInputStream(archiveFile, type).use { tarIn ->
+                    var found = false
+                    var entry: TarArchiveEntry? = tarIn.nextEntry
+                    while (entry != null) {
+                        val candName = entry.name.trimStart('/')
+                        if (!entry.isDirectory && (candName == cleanEntry || candName.equals(cleanEntry, ignoreCase = true))) {
+                            FileOutputStream(outputFile).use { outStream ->
+                                tarIn.copyTo(outStream)
+                            }
+                            found = true
+                            break
+                        }
+                        entry = tarIn.nextEntry
+                    }
+                    if (!found) {
+                        return@withContext Result.failure(NoSuchElementException("Entry $cleanEntry not found in tar archive"))
                     }
                 }
                 Result.success(outputFile)

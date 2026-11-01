@@ -48,6 +48,9 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.outlined.MoreVert
@@ -334,6 +337,65 @@ fun SearchScreen(
                     }
                 }
 
+                // Active Directory Scope Pill
+                AnimatedVisibility(
+                    visible = searchState.scopeDirectory != null,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x33A855F7))
+                                .border(1.dp, Color(0x66A855F7), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = Color(0xFFC084FC),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = "Searching in: ${searchState.scopeDisplayName ?: "Folder"}",
+                                    color = Color(0xFFE9D5FF),
+                                    fontSize = 12.sp,
+                                    fontFamily = OutfitFontFamily,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x44FFFFFF))
+                                        .clickable {
+                                            haptics.trigger(HapticType.SELECTION_NOTCH)
+                                            viewModel.clearSearchScope()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Search globally",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Filter Chips Horizontal Carousel (Matching Stitch Screen 4)
                 Row(
                     modifier = Modifier
@@ -346,7 +408,7 @@ fun SearchScreen(
                     SearchFilterCategory.values().forEach { cat ->
                         val isSelected = searchState.selectedCategory == cat
                         val count = searchState.categoryCounts[cat] ?: 0
-                        val countText = if (searchState.query.isNotBlank()) " ($count)" else ""
+                        val countText = if (searchState.query.isNotBlank() || searchState.selectedCategory != SearchFilterCategory.ALL) " ($count)" else ""
 
                         SearchFilterChip(
                             category = cat,
@@ -362,7 +424,7 @@ fun SearchScreen(
             }
 
             // Results Sub-header
-            if (searchState.query.isNotBlank()) {
+            if (searchState.query.isNotBlank() || searchState.selectedCategory != SearchFilterCategory.ALL) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -438,7 +500,7 @@ fun SearchScreen(
                         modifier = Modifier.size(36.dp)
                     )
                 }
-            } else if (searchState.query.isBlank()) {
+            } else if (searchState.query.isBlank() && searchState.selectedCategory == SearchFilterCategory.ALL) {
                 // Empty query guide
                 Box(
                     modifier = Modifier
@@ -782,7 +844,10 @@ fun SearchFilterChip(
         SearchFilterCategory.ALL -> Pair(Icons.Default.CheckCircle, Color.White)
         SearchFilterCategory.DOCUMENTS -> Pair(Icons.Default.Description, Color(0xFFF472B6))
         SearchFilterCategory.IMAGES -> Pair(Icons.Default.Image, Color(0xFF22D3EE))
+        SearchFilterCategory.VIDEOS -> Pair(Icons.Default.PlayCircle, Color(0xFFA78BFA))
         SearchFilterCategory.AUDIO -> Pair(Icons.Default.Mic, Color(0xFF34D399))
+        SearchFilterCategory.ARCHIVES -> Pair(Icons.Default.FolderZip, Color(0xFFFBBF24))
+        SearchFilterCategory.APKS -> Pair(Icons.Default.Android, Color(0xFF4ADE80))
         SearchFilterCategory.FOLDERS -> Pair(Icons.Default.Folder, Color(0xFFC084FC))
     }
 

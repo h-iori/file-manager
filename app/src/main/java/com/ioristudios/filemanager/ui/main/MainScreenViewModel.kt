@@ -62,7 +62,13 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     private val _selectedTab = MutableStateFlow(NavTab.HOME)
     val selectedTab: StateFlow<NavTab> = _selectedTab.asStateFlow()
 
+    private var _searchOriginTab: NavTab = NavTab.HOME
+    val searchOriginTab: NavTab get() = _searchOriginTab
+
     fun selectTab(tab: NavTab) {
+        if (tab == NavTab.SEARCH && _selectedTab.value != NavTab.SEARCH) {
+            _searchOriginTab = _selectedTab.value
+        }
         _selectedTab.value = tab
     }
 
@@ -218,6 +224,46 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
 
     fun onSearchCategorySelected(category: SearchFilterCategory) {
         repository.setSearchCategory(category)
+    }
+
+    fun openGlobalSearch() {
+        _searchOriginTab = NavTab.HOME
+        repository.clearSearchScope()
+        selectTab(NavTab.SEARCH)
+    }
+
+    fun openScopedSearch(folderPath: String, folderName: String) {
+        _searchOriginTab = NavTab.FILES
+        repository.setSearchScope(folderPath, folderName)
+        selectTab(NavTab.SEARCH)
+    }
+
+    fun openCategorySearch(category: SearchFilterCategory) {
+        _searchOriginTab = NavTab.HOME
+        repository.clearSearchScope()
+        repository.setSearchCategory(category)
+        selectTab(NavTab.SEARCH)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            repository.search("", category)
+        }
+    }
+
+    fun clearSearchScope() {
+        repository.clearSearchScope()
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            repository.search(searchUiState.value.query, searchUiState.value.selectedCategory)
+        }
+    }
+
+    fun exitSearch() {
+        val returnToFiles = searchUiState.value.scopeDirectory != null || _searchOriginTab == NavTab.FILES
+        clearSearch()
+        clearSearchScope()
+        val target = if (returnToFiles) NavTab.FILES else _searchOriginTab
+        _searchOriginTab = NavTab.HOME
+        selectTab(target)
     }
 
     fun clearSearch() {

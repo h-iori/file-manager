@@ -52,10 +52,91 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Intent filters for Archives (MIME Types) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/x-zip" />
+                <data android:mimeType="application/rar" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-7z-compressed" />
+                <data android:mimeType="application/7z" />
+                <data android:mimeType="application/x-tar" />
+                <data android:mimeType="application/x-gtar" />
+                <data android:mimeType="application/x-gtar-compressed" />
+                <data android:mimeType="application/gnutar" />
+                <data android:mimeType="application/tar" />
+                <data android:mimeType="application/gzip" />
+                <data android:mimeType="application/x-gzip" />
+                <data android:mimeType="application/gz" />
+                <data android:mimeType="application/x-bzip" />
+                <data android:mimeType="application/x-bzip2" />
+                <data android:mimeType="application/bz2" />
+                <data android:mimeType="application/x-xz" />
+                <data android:mimeType="application/xz" />
+                <data android:mimeType="application/x-compress" />
+                <data android:mimeType="application/x-compressed" />
+                <data android:mimeType="application/java-archive" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
+            <!-- Intent filter by archive file extensions / pathPatterns -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.zip" />
+                <data android:pathPattern=".*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\..*\\.zip" />
+                <data android:pathPattern=".*\\.rar" />
+                <data android:pathPattern=".*\\..*\\.rar" />
+                <data android:pathPattern=".*\\.7z" />
+                <data android:pathPattern=".*\\..*\\.7z" />
+                <data android:pathPattern=".*\\.tar" />
+                <data android:pathPattern=".*\\..*\\.tar" />
+                <data android:pathPattern=".*\\.tar\\.gz" />
+                <data android:pathPattern=".*\\.tgz" />
+                <data android:pathPattern=".*\\.tar\\.bz2" />
+                <data android:pathPattern=".*\\.tbz2" />
+                <data android:pathPattern=".*\\.apk" />
+                <data android:pathPattern=".*\\..*\\.apk" />
+                <data android:pathPattern=".*\\.xapk" />
+                <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\.gz" />
+                <data android:pathPattern=".*\\.bz2" />
+                <data android:pathPattern=".*\\.xz" />
+            </intent-filter>
+
+            <!-- Intent filter for Sharing/Sending Archives (ACTION_SEND) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/rar" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-7z-compressed" />
+                <data android:mimeType="application/x-tar" />
+                <data android:mimeType="application/gzip" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
     </application>

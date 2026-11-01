@@ -177,7 +177,17 @@ import java.util.Locale
 fun DirectoryScreen(
     viewModel: MainScreenViewModel,
     showMessage: (String) -> Unit,
-    onSearchClick: () -> Unit = { viewModel.selectTab(NavTab.SEARCH) },
+    onSearchClick: () -> Unit = {
+        val curr = viewModel.directoryUiState.value.currentPath
+        val root = viewModel.directoryUiState.value.rootPath
+        val isRoot = curr.isEmpty() || curr == "/storage/emulated/0" || curr == root
+        if (isRoot) {
+            viewModel.openGlobalSearch()
+        } else {
+            val folderName = java.io.File(curr).name.ifEmpty { "Folder" }
+            viewModel.openScopedSearch(curr, folderName)
+        }
+    },
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.directoryUiState.collectAsStateWithLifecycle()

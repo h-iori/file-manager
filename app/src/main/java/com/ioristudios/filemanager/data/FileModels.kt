@@ -116,7 +116,10 @@ enum class SearchFilterCategory(val label: String) {
     ALL("All"),
     DOCUMENTS("Documents"),
     IMAGES("Images"),
+    VIDEOS("Videos"),
     AUDIO("Audio"),
+    ARCHIVES("Archives"),
+    APKS("APKs"),
     FOLDERS("Folders")
 }
 
@@ -139,5 +142,7 @@ data class SearchUiState(
     val results: List<SearchResultItem> = emptyList(),
     val categoryCounts: Map<SearchFilterCategory, Int> = emptyMap(),
     val isSearching: Boolean = false,
-    val recentQueries: List<String> = emptyList()
+    val recentQueries: List<String> = emptyList(),
+    val scopeDirectory: String? = null,
+    val scopeDisplayName: String? = null
 )

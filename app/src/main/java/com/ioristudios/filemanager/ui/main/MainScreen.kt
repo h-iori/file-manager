@@ -136,6 +136,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ioristudios.filemanager.R
 import com.ioristudios.filemanager.data.CategoryItem
 import com.ioristudios.filemanager.data.FileCategory
+import com.ioristudios.filemanager.data.SearchFilterCategory
 import com.ioristudios.filemanager.data.HomeScreenData
 import com.ioristudios.filemanager.data.RecentFile
 import com.ioristudios.filemanager.data.StorageOverview
@@ -195,8 +196,7 @@ fun MainScreen(
                 }
             }
             NavTab.SEARCH -> {
-                viewModel.clearSearch()
-                viewModel.selectTab(NavTab.HOME)
+                viewModel.exitSearch()
             }
             else -> {
                 viewModel.selectTab(NavTab.HOME)
@@ -247,7 +247,7 @@ fun MainScreen(
                         state = homeState,
                         showMessage = showMessage,
                         onViewAllClick = { viewModel.selectTab(NavTab.FILES) },
-                        onSearchClick = { viewModel.selectTab(NavTab.SEARCH) },
+                        onSearchClick = { viewModel.openGlobalSearch() },
                         onSettingsClick = { viewModel.selectTab(NavTab.SETTINGS) },
                         onCleanupClick = { showCleanup = true },
                         onSelectVolume = { volumeId -> viewModel.selectStorageVolume(volumeId) }
@@ -257,7 +257,17 @@ fun MainScreen(
                     DirectoryScreen(
                         viewModel = viewModel,
                         showMessage = showMessage,
-                        onSearchClick = { viewModel.selectTab(NavTab.SEARCH) },
+                        onSearchClick = {
+                            val curr = viewModel.directoryUiState.value.currentPath
+                            val root = viewModel.directoryUiState.value.rootPath
+                            val isRoot = curr.isEmpty() || curr == "/storage/emulated/0" || curr == root
+                            if (isRoot) {
+                                viewModel.openGlobalSearch()
+                            } else {
+                                val folderName = java.io.File(curr).name.ifEmpty { "Folder" }
+                                viewModel.openScopedSearch(curr, folderName)
+                            }
+                        },
                         modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     )
                 }
@@ -265,8 +275,7 @@ fun MainScreen(
                     SearchScreen(
                         viewModel = viewModel,
                         onBackClick = {
-                            viewModel.clearSearch()
-                            viewModel.selectTab(NavTab.HOME)
+                            viewModel.exitSearch()
                         },
                         showMessage = showMessage,
                         modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
@@ -409,10 +418,24 @@ fun HomeScreenContent(
                 StorageBreakdownSection(
                     categories = state.categories,
                     onCategoryClick = { cat ->
-                        if (cat.title.equals("Apps", ignoreCase = true)) {
-                            showAppManager = true
-                        } else {
-                            onViewAllClick()
+                        when (cat.title.lowercase()) {
+                            "apps" -> showAppManager = true
+                            "photos", "images" -> viewModel.openCategorySearch(SearchFilterCategory.IMAGES)
+                            "videos" -> viewModel.openCategorySearch(SearchFilterCategory.VIDEOS)
+                            "documents", "docs" -> viewModel.openCategorySearch(SearchFilterCategory.DOCUMENTS)
+                            "audio" -> viewModel.openCategorySearch(SearchFilterCategory.AUDIO)
+                            "downloads", "archives" -> viewModel.openCategorySearch(SearchFilterCategory.ARCHIVES)
+                            "apks" -> viewModel.openCategorySearch(SearchFilterCategory.APKS)
+                            else -> {
+                                when (cat.category) {
+                                    FileCategory.IMAGE -> viewModel.openCategorySearch(SearchFilterCategory.IMAGES)
+                                    FileCategory.VIDEO -> viewModel.openCategorySearch(SearchFilterCategory.VIDEOS)
+                                    FileCategory.DOCUMENT, FileCategory.SPREADSHEET -> viewModel.openCategorySearch(SearchFilterCategory.DOCUMENTS)
+                                    FileCategory.AUDIO -> viewModel.openCategorySearch(SearchFilterCategory.AUDIO)
+                                    FileCategory.ARCHIVE -> viewModel.openCategorySearch(SearchFilterCategory.ARCHIVES)
+                                    else -> onViewAllClick()
+                                }
+                            }
                         }
                     },
                     onViewAllClick = onViewAllClick
