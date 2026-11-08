@@ -23,6 +23,33 @@ class SecureMessageCodec(
     private var sendSequenceNumber: Long = 1
     private var receiveSequenceNumber: Long = 1
 
+    private val encKeySpec = SecretKeySpec(encryptionKey, "AES")
+    private val decKeySpec = SecretKeySpec(decryptionKey, "AES")
+    private val signHmacKeySpec = SecretKeySpec(signingHmacKey, "HmacSHA256")
+    private val verifyHmacKeySpec = SecretKeySpec(verifyingHmacKey, "HmacSHA256")
+
+    private val encryptCipher: Cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    private val decryptCipher: Cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    private val signingMac: Mac = Mac.getInstance("HmacSHA256").apply {
+        init(signHmacKeySpec)
+    }
+    private val verifyingMac: Mac = Mac.getInstance("HmacSHA256").apply {
+        init(verifyHmacKeySpec)
+    }
+
+    /**
+     * Creates an independent copy of this codec with its own cipher and MAC instances
+     * for parallel worker channels sharing the same key material.
+     */
+    fun duplicate(): SecureMessageCodec {
+        return SecureMessageCodec(
+            encryptionKey = encryptionKey.copyOf(),
+            decryptionKey = decryptionKey.copyOf(),
+            signingHmacKey = signingHmacKey.copyOf(),
+            verifyingHmacKey = verifyingHmacKey.copyOf()
+        )
+    }
+
     /**
      * Encrypts plaintext and returns the wire-ready serialized SecureMessage Protobuf bytes.
      * message SecureMessage {
@@ -35,31 +62,30 @@ class SecureMessageCodec(
         val iv = ByteArray(16)
         secureRandom.nextBytes(iv)
 
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(encryptionKey, "AES"), IvParameterSpec(iv))
-        val ciphertext = cipher.doFinal(plaintext)
+        encryptCipher.init(Cipher.ENCRYPT_MODE, encKeySpec, IvParameterSpec(iv))
+        val ciphertext = encryptCipher.doFinal(plaintext)
 
         // Header: signature_scheme=1 (HMAC_SHA256), encryption_scheme=1 (AES_256_CBC), iv=16B
-        val headerWriter = ProtobufLite.Writer()
+        val headerWriter = ProtobufLite.Writer(64)
             .writeInt32(1, 1) // signature_scheme = HMAC_SHA256
             .writeInt32(2, 1) // encryption_scheme = AES_256_CBC
             .writeBytes(3, iv) // iv
             .writeInt64(4, sendSequenceNumber++) // sequence_number for anti-replay
 
         // HeaderAndBody: field 1 = header, field 2 = body
-        val headerAndBodyWriter = ProtobufLite.Writer()
-            .writeBytes(1, headerWriter.toByteArray())
+        val headerBytes = headerWriter.toByteArray()
+        val headerAndBodyWriter = ProtobufLite.Writer(headerBytes.size + ciphertext.size + 16)
+            .writeBytes(1, headerBytes)
             .writeBytes(2, ciphertext)
 
         val headerAndBodyBytes = headerAndBodyWriter.toByteArray()
 
         // Compute HMAC-SHA256 signature over HeaderAndBody bytes
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(signingHmacKey, "HmacSHA256"))
-        val signature = mac.doFinal(headerAndBodyBytes)
+        signingMac.reset()
+        val signature = signingMac.doFinal(headerAndBodyBytes)
 
         // SecureMessage Protobuf: field 1 = header_and_body, field 2 = signature
-        val secureMessageWriter = ProtobufLite.Writer()
+        val secureMessageWriter = ProtobufLite.Writer(headerAndBodyBytes.size + signature.size + 16)
             .writeBytes(1, headerAndBodyBytes)
             .writeBytes(2, signature)
 
@@ -112,9 +138,8 @@ class SecureMessageCodec(
     @Synchronized
     fun decrypt(signature: ByteArray, headerAndBodyBytes: ByteArray): ByteArray {
         // 1. Verify HMAC-SHA256
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(verifyingHmacKey, "HmacSHA256"))
-        val computedSignature = mac.doFinal(headerAndBodyBytes)
+        verifyingMac.reset()
+        val computedSignature = verifyingMac.doFinal(headerAndBodyBytes)
 
         if (!MessageDigestEquals.isEqual(signature, computedSignature)) {
             throw GeneralSecurityException("HMAC-SHA256 signature verification failed on SecureMessage")
@@ -150,9 +175,8 @@ class SecureMessageCodec(
         receiveSequenceNumber++
 
         // 3. Decrypt AES-256-CBC
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(decryptionKey, "AES"), IvParameterSpec(iv))
-        return cipher.doFinal(ciphertext)
+        decryptCipher.init(Cipher.DECRYPT_MODE, decKeySpec, IvParameterSpec(iv))
+        return decryptCipher.doFinal(ciphertext)
     }
 
     private object MessageDigestEquals {

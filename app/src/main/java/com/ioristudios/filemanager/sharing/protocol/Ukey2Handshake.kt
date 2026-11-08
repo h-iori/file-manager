@@ -3,6 +3,7 @@ package com.ioristudios.filemanager.sharing.protocol
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
@@ -11,9 +12,12 @@ import java.security.spec.X509EncodedKeySpec
 import javax.crypto.KeyAgreement
 
 /**
- * Universal Key Exchange 2 (UKEY2) implementation for Google Nearby Connections.
- * Handles ephemeral ECDH key agreement over NIST P-256 (secp256r1) and derives
- * symmetric session keys (AES-256-CBC) and authentication tags (HMAC-SHA256).
+ * Universal Key Exchange 2 (UKEY2) implementation for Google Nearby Connections / Quick Share.
+ * Compliant with Google UKEY2 specifications:
+ * - Ephemeral ECDH key agreement over NIST P-256 (secp256r1)
+ * - SHA-512 CipherCommitments in ClientInit
+ * - RFC 5869 HKDF derivation with "UKEY2 v1 auth" & "UKEY2 v1 next" using handshake transcript
+ * - Symmetric session keys (AES-256-CBC) and HMAC-SHA256 signing keys for SecureMessage
  */
 class Ukey2Handshake(val isClient: Boolean) {
 
@@ -31,6 +35,9 @@ class Ukey2Handshake(val isClient: Boolean) {
     private val secureRandom = SecureRandom()
     private val keyPair: KeyPair
     private val localRandom = ByteArray(32)
+
+    private var m1Bytes: ByteArray? = null
+    private var m2Bytes: ByteArray? = null
 
     var remotePublicKey: ECPublicKey? = null
         private set
@@ -53,18 +60,28 @@ class Ukey2Handshake(val isClient: Boolean) {
     }
 
     /**
-     * Client Step 1: Generates ClientInit wire message
+     * Client Step 1: Generates ClientInit wire message with SHA-512 CipherCommitment
      */
     fun createClientInit(): ByteArray {
         check(isClient) { "Only client can create ClientInit" }
         check(state == State.INITIAL)
 
+        val clientPublicKeyBytes = keyPair.public.encoded
+        val sha512 = MessageDigest.getInstance("SHA-512").digest(clientPublicKeyBytes)
+
+        // CipherCommitment: field 1 = handshake_cipher (1 = P256_SHA512), field 2 = commitment
+        val commitmentWriter = ProtobufLite.Writer()
+            .writeInt32(1, 1) // P256_SHA512
+            .writeBytes(2, sha512)
+
         val innerWriter = ProtobufLite.Writer()
             .writeInt32(1, 1) // version = 1
             .writeBytes(2, localRandom) // random = 32 bytes
+            .writeBytes(3, commitmentWriter.toByteArray()) // cipher_commitments
             .writeString(4, "AES_256_CBC-HMAC_SHA256") // next_protocol
 
         val clientInitData = innerWriter.toByteArray()
+        m1Bytes = clientInitData
 
         val outerWriter = ProtobufLite.Writer()
             .writeInt32(1, 1) // message_type = CLIENT_INIT (1)
@@ -93,6 +110,7 @@ class Ukey2Handshake(val isClient: Boolean) {
             }
         }
         require(msgType == 1) { "Expected CLIENT_INIT message type 1, got $msgType" }
+        m1Bytes = msgData
 
         val serverPublicKeyBytes = keyPair.public.encoded
 
@@ -102,9 +120,12 @@ class Ukey2Handshake(val isClient: Boolean) {
             .writeInt32(3, 1) // selected_cipher = P256_SHA512 (1)
             .writeBytes(4, serverPublicKeyBytes) // public_key
 
+        val serverInitData = innerWriter.toByteArray()
+        m2Bytes = serverInitData
+
         val outerWriter = ProtobufLite.Writer()
             .writeInt32(1, 2) // message_type = SERVER_INIT (2)
-            .writeBytes(2, innerWriter.toByteArray())
+            .writeBytes(2, serverInitData)
 
         state = State.WAITING_FOR_CLIENT_FINISHED
         return outerWriter.toByteArray()
@@ -129,6 +150,7 @@ class Ukey2Handshake(val isClient: Boolean) {
             }
         }
         require(msgType == 2) { "Expected SERVER_INIT message type 2, got $msgType" }
+        m2Bytes = msgData
 
         val serverReader = ProtobufLite.Reader(msgData)
         var serverPubKeyBytes = ByteArray(0)
@@ -198,24 +220,37 @@ class Ukey2Handshake(val isClient: Boolean) {
         state = State.COMPLETED
     }
 
+    /**
+     * Standard Google UKEY2 key derivation:
+     * - DHS = ECDH(keyPair.private, remoteKey)
+     * - PRK_AUTH = HKDF-Extract("UKEY2 v1 auth", DHS)
+     * - AUTH_STRING = HKDF-Expand(PRK_AUTH, M1 || M2, 32) -> PIN code
+     * - PRK_NEXT = HKDF-Extract("UKEY2 v1 next", DHS)
+     * - NEXT_SECRET = HKDF-Expand(PRK_NEXT, M1 || M2, 32)
+     * - SecureMessage keys derived from NEXT_SECRET
+     */
     private fun deriveAllKeys(remoteKey: ECPublicKey) {
         val ka = KeyAgreement.getInstance("ECDH")
         ka.init(keyPair.private)
         ka.doPhase(remoteKey, true)
-        val sharedSecret = ka.generateSecret()
+        val dhs = ka.generateSecret()
 
-        // HKDF-Extract using "UKEY2" info context
-        val salt = "UKEY2".toByteArray(Charsets.UTF_8)
-        val prk = Hkdf.extract(salt, sharedSecret)
+        val transcript = (m1Bytes ?: ByteArray(0)) + (m2Bytes ?: ByteArray(0))
 
-        // Derive 32-byte Auth Token for PIN confirmation
-        authToken = Hkdf.expand(prk, "auth-token".toByteArray(Charsets.UTF_8), 32)
+        // 1. Derive Auth Token for PIN confirmation
+        val prkAuth = Hkdf.extract("UKEY2 v1 auth".toByteArray(Charsets.UTF_8), dhs)
+        authToken = Hkdf.expand(prkAuth, transcript, 32)
 
-        // Derive Symmetric AES-256 session keys & HMAC signing keys
-        clientKey = Hkdf.expand(prk, "client-key".toByteArray(Charsets.UTF_8), 32)
-        serverKey = Hkdf.expand(prk, "server-key".toByteArray(Charsets.UTF_8), 32)
-        clientHmacKey = Hkdf.expand(prk, "client-hmac-key".toByteArray(Charsets.UTF_8), 32)
-        serverHmacKey = Hkdf.expand(prk, "server-hmac-key".toByteArray(Charsets.UTF_8), 32)
+        // 2. Derive Next-Protocol Secret
+        val prkNext = Hkdf.extract("UKEY2 v1 next".toByteArray(Charsets.UTF_8), dhs)
+        val nextSecret = Hkdf.expand(prkNext, transcript, 32)
+
+        // 3. Derive Symmetric Session Keys for SecureMessage
+        val prkSecure = Hkdf.extract("SecureMessage".toByteArray(Charsets.UTF_8), nextSecret)
+        clientKey = Hkdf.expand(prkSecure, "client-key".toByteArray(Charsets.UTF_8), 32)
+        serverKey = Hkdf.expand(prkSecure, "server-key".toByteArray(Charsets.UTF_8), 32)
+        clientHmacKey = Hkdf.expand(prkSecure, "client-hmac-key".toByteArray(Charsets.UTF_8), 32)
+        serverHmacKey = Hkdf.expand(prkSecure, "server-hmac-key".toByteArray(Charsets.UTF_8), 32)
     }
 
     fun getEncryptionKey(): ByteArray = if (isClient) clientKey!! else serverKey!!
@@ -223,4 +258,3 @@ class Ukey2Handshake(val isClient: Boolean) {
     fun getSigningHmacKey(): ByteArray = if (isClient) clientHmacKey!! else serverHmacKey!!
     fun getVerifyingHmacKey(): ByteArray = if (isClient) serverHmacKey!! else clientHmacKey!!
 }
-

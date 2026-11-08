@@ -90,6 +90,7 @@ class NearbyMdnsManager(private val context: Context) {
             setPort(port)
             // Add EndpointInfo TXT record for full backward compatibility
             setAttribute("n", localDeviceName)
+            setAttribute("fm", "2")
         }
 
         registrationListener = object : NsdManager.RegistrationListener {
@@ -224,14 +225,22 @@ class NearbyMdnsManager(private val context: Context) {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun handleResolvedService(resolvedInfo: NsdServiceInfo) {
-        val host: InetAddress? = resolvedInfo.host
+        val host: InetAddress? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            resolvedInfo.hostAddresses.firstOrNull { it is java.net.Inet4Address }
+                ?: resolvedInfo.hostAddresses.firstOrNull()
+                ?: resolvedInfo.host
+        } else {
+            resolvedInfo.host
+        }
         val port = resolvedInfo.port
         val rawName = resolvedInfo.serviceName ?: ""
 
         val (endpointId, deviceName) = extractDeviceMetadata(rawName, resolvedInfo.attributes)
+        val isFast = resolvedInfo.attributes?.containsKey("fm") == true
 
-        Log.d(TAG, "Parsed Peer: endpointId=$endpointId, deviceName='$deviceName', host=$host, port=$port")
+        Log.d(TAG, "Parsed Peer: endpointId=$endpointId, deviceName='$deviceName', isFast=$isFast, host=$host, port=$port")
 
         if (host != null && port > 0) {
             val peer = DiscoveredPeer(
@@ -240,6 +249,7 @@ class NearbyMdnsManager(private val context: Context) {
                 deviceType = DeviceType.PHONE,
                 hostAddress = host.hostAddress,
                 port = port,
+                isFastApp = isFast,
                 lastSeenTimestamp = System.currentTimeMillis()
             )
             _discoveredPeers.value = _discoveredPeers.value + (endpointId to peer)

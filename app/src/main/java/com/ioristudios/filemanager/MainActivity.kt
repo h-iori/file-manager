@@ -107,9 +107,23 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
+
+        val targetTab = intent.getStringExtra("tab")
+        if (targetTab != null) {
+            when (targetTab.lowercase()) {
+                "share" -> viewModel.selectTab(NavTab.SHARE)
+                "files" -> viewModel.selectTab(NavTab.FILES)
+                "home" -> viewModel.selectTab(NavTab.HOME)
+                "settings" -> viewModel.selectTab(NavTab.SETTINGS)
+            }
+        }
+
         val action = intent.action ?: return
 
         when (action) {
+            "com.ioristudios.filemanager.ACTION_SHARE" -> {
+                viewModel.selectTab(NavTab.SHARE)
+            }
             Intent.ACTION_SEND -> {
                 val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
@@ -125,7 +139,7 @@ class MainActivity : ComponentActivity() {
                             val file = File(path)
                             withContext(Dispatchers.Main) {
                                 viewModel.shareTransferManager.setSelectedFiles(listOf(file))
-                                viewModel.shareTransferManager.setShareMode(ShareMode.SEND)
+                                viewModel.shareTransferManager.confirmSendAndScan()
                                 viewModel.selectTab(NavTab.SHARE)
                             }
                         }
@@ -159,7 +173,7 @@ class MainActivity : ComponentActivity() {
                         if (resolvedFiles.isNotEmpty()) {
                             withContext(Dispatchers.Main) {
                                 viewModel.shareTransferManager.setSelectedFiles(resolvedFiles)
-                                viewModel.shareTransferManager.setShareMode(ShareMode.SEND)
+                                viewModel.shareTransferManager.confirmSendAndScan()
                                 viewModel.selectTab(NavTab.SHARE)
                             }
                         }
@@ -223,11 +237,12 @@ class MainActivity : ComponentActivity() {
             if (displayName.isNullOrBlank()) {
                 displayName = uri.lastPathSegment?.let { File(it).name }
             }
-            if (displayName.isNullOrBlank() || !displayName!!.contains('.')) {
-                displayName = "received_archive.zip"
+            val rawName = displayName
+            val safeName = if (rawName.isNullOrBlank() || !rawName.contains('.')) {
+                "received_archive.zip"
+            } else {
+                File(rawName).name
             }
-
-            val safeName = File(displayName!!).name
             val destDir = File(cacheDir, "opened_archives")
             destDir.mkdirs()
             val destFile = File(destDir, safeName)

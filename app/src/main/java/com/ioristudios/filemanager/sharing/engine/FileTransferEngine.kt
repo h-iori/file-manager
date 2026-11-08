@@ -1,9 +1,12 @@
 package com.ioristudios.filemanager.sharing.engine
 
 import android.content.Context
+import android.content.Intent
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Environment
 import android.util.Log
+import android.webkit.MimeTypeMap
 import com.ioristudios.filemanager.sharing.discovery.DiscoveredPeer
 import com.ioristudios.filemanager.sharing.protocol.NearbyFrames
 import com.ioristudios.filemanager.sharing.protocol.PinCalculator
@@ -17,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -36,7 +41,7 @@ class FileTransferEngine(
 
     companion object {
         private const val TAG = "FileTransferEngine"
-        private const val CHUNK_SIZE = 64 * 1024 // 64 KB chunks
+        const val CHUNK_SIZE = 1024 * 1024 // 1 MB high-speed chunks for maximum throughput
     }
 
     var pendingPin: String? = null
@@ -55,7 +60,28 @@ class FileTransferEngine(
         if (!shareDir.exists()) {
             shareDir.mkdirs()
         }
-        return shareDir
+        return if (shareDir.exists() && shareDir.canWrite()) {
+            shareDir
+        } else if (downloadDir.exists() && downloadDir.canWrite()) {
+            downloadDir
+        } else {
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        }
+    }
+
+    fun resolveNameConflict(file: File): File {
+        if (!file.exists()) return file
+        val parent = file.parentFile ?: return file
+        val nameWithoutExt = file.nameWithoutExtension
+        val ext = file.extension
+        var counter = 1
+        var candidate: File
+        do {
+            val suffix = if (ext.isNotEmpty()) ".$ext" else ""
+            candidate = File(parent, "$nameWithoutExt ($counter)$suffix")
+            counter++
+        } while (candidate.exists() && counter < 1000)
+        return candidate
     }
 
     /**
@@ -127,11 +153,15 @@ class FileTransferEngine(
 
             // 5. Send Introduction with file metadata
             val payloadMetaList = filesToSend.mapIndexed { idx, f ->
+                val ext = f.extension.lowercase()
+                val mime = if (ext.isNotEmpty()) {
+                    MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+                } else null
                 NearbyFrames.FilePayloadMeta(
                     payloadId = System.currentTimeMillis() + idx,
                     fileName = f.name,
                     fileSize = f.length(),
-                    mimeType = "*/*"
+                    mimeType = mime ?: "*/*"
                 )
             }
             val introFrame = NearbyFrames.encodeIntroduction(NearbyFrames.Introduction(payloadMetaList))
@@ -150,13 +180,14 @@ class FileTransferEngine(
             sessionManager.updateStatus(TransferLifecycleStatus.TRANSFERRING)
             val totalBytes = filesToSend.sumOf { it.length() }
             var transferredTotal = 0L
+            var lastMetricsUpdateMs = 0L
 
             for ((index, file) in filesToSend.withIndex()) {
                 val payloadId = payloadMetaList[index].payloadId
                 val fileLength = file.length()
                 var fileOffset = 0L
 
-                val raf = RandomAccessFile(file, "r")
+                val bis = BufferedInputStream(FileInputStream(file), 512 * 1024)
                 val buffer = ByteArray(CHUNK_SIZE)
 
                 try {
@@ -166,7 +197,7 @@ class FileTransferEngine(
                             val cancelFrame = NearbyFrames.encodeTransferControl(
                                 NearbyFrames.TransferControl(payloadId, "CANCEL")
                             )
-                            transport.sendFrame(codec.encrypt(cancelFrame))
+                            transport.sendFrameDirect(codec.encrypt(cancelFrame))
                             return@withContext
                         }
 
@@ -175,7 +206,7 @@ class FileTransferEngine(
                             delay(200)
                         }
 
-                        val bytesRead = raf.read(buffer)
+                        val bytesRead = bis.read(buffer)
                         if (bytesRead == -1) break
 
                         val chunk = if (bytesRead == CHUNK_SIZE) buffer else buffer.copyOf(bytesRead)
@@ -189,25 +220,29 @@ class FileTransferEngine(
                                 isLastChunk = isLast
                             )
                         )
-                        transport.sendFrame(codec.encrypt(payloadPacket))
+                        transport.sendFrameDirect(codec.encrypt(payloadPacket))
 
                         fileOffset += bytesRead
                         transferredTotal += bytesRead
 
-                        sessionManager.updateMetrics(
-                            fileName = file.name,
-                            fileIndex = index + 1,
-                            totalFiles = filesToSend.size,
-                            transferredBytes = transferredTotal,
-                            totalBytes = totalBytes
-                        )
+                        val now = System.currentTimeMillis()
+                        if (isLast || now - lastMetricsUpdateMs >= 100L) {
+                            lastMetricsUpdateMs = now
+                            sessionManager.updateMetrics(
+                                fileName = file.name,
+                                fileIndex = index + 1,
+                                totalFiles = filesToSend.size,
+                                transferredBytes = transferredTotal,
+                                totalBytes = totalBytes
+                            )
+                        }
                     }
                 } finally {
-                    raf.close()
+                    bis.close()
                 }
 
                 // Await PayloadAck
-                val ackRaw = transport.receiveFrame()
+                val ackRaw = transport.receiveFrameDirect()
                 val ackDecrypted = codec.decrypt(ackRaw)
                 val parsedAck = NearbyFrames.decodeFrame(ackDecrypted)
                 if (parsedAck is NearbyFrames.ParsedFrame.Ack && !parsedAck.ack.success) {
@@ -248,6 +283,8 @@ class FileTransferEngine(
             try {
                 clientSocket.tcpNoDelay = true
                 clientSocket.soTimeout = 45000
+                clientSocket.sendBufferSize = 1024 * 1024
+                clientSocket.receiveBufferSize = 1024 * 1024
             } catch (_: Exception) {}
             transport = SocketTransport(clientSocket)
             currentSocketTransport = transport
@@ -312,6 +349,11 @@ class FileTransferEngine(
             } else emptyList()
             pendingFiles = incomingFiles
 
+            if (incomingFiles.isEmpty()) {
+                sessionManager.markFailed("No files to receive from peer")
+                return@withContext
+            }
+
             // Send TransferAccept
             transport.sendFrame(codec.encrypt(NearbyFrames.encodeTransferAccept()))
 
@@ -321,68 +363,146 @@ class FileTransferEngine(
             var transferredTotal = 0L
             val downloadDir = getDownloadDir()
 
+            // Clean any stale temp files from previous failed transfers
+            try {
+                downloadDir.listFiles { f -> f.name.startsWith(".share_tmp_") && f.name.endsWith(".part") }
+                    ?.forEach { stale ->
+                        Log.d(TAG, "Cleaning stale temp file: ${stale.name}")
+                        stale.delete()
+                    }
+            } catch (_: Exception) {}
+
             for ((index, meta) in incomingFiles.withIndex()) {
-                val tempFile = DataIntegrityVerifier.getTempResumeFile(context.cacheDir, meta.payloadId)
-                val raf = RandomAccessFile(tempFile, "rw")
-                var fileBytesReceived = raf.length()
-                raf.seek(fileBytesReceived)
+                if (!downloadDir.exists()) {
+                    downloadDir.mkdirs()
+                }
+
+                val tempFile = DataIntegrityVerifier.getTempResumeFile(downloadDir, meta.payloadId)
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
+
+                val fos = FileOutputStream(tempFile, false)
+                val bos = BufferedOutputStream(fos, 1024 * 1024)
+                var fileBytesReceived = 0L
+                var lastMetricsUpdateMs = 0L
 
                 var isDone = false
-                while (!isDone && coroutineContext.isActive) {
-                    if (sessionManager.isCancelled) {
-                        return@withContext
+                try {
+                    while (!isDone && coroutineContext.isActive) {
+                        if (sessionManager.isCancelled) {
+                            return@withContext
+                        }
+
+                        while (sessionManager.isPaused && !sessionManager.isCancelled) {
+                            delay(200)
+                        }
+
+                        val chunkRaw = transport.receiveFrameDirect()
+                        val chunkDecrypted = codec.decrypt(chunkRaw)
+                        val frame = NearbyFrames.decodeFrame(chunkDecrypted)
+
+                        if (frame is NearbyFrames.ParsedFrame.Control && frame.control.action == "CANCEL") {
+                            sessionManager.cancelTransfer()
+                            return@withContext
+                        }
+
+                        if (frame is NearbyFrames.ParsedFrame.Payload) {
+                            val p = frame.transfer
+                            bos.write(p.chunkData)
+                            fileBytesReceived += p.chunkData.size
+                            transferredTotal += p.chunkData.size
+
+                            val now = System.currentTimeMillis()
+                            if (p.isLastChunk || now - lastMetricsUpdateMs >= 100L) {
+                                lastMetricsUpdateMs = now
+                                sessionManager.updateMetrics(
+                                    fileName = meta.fileName,
+                                    fileIndex = index + 1,
+                                    totalFiles = incomingFiles.size,
+                                    transferredBytes = transferredTotal,
+                                    totalBytes = totalBytes
+                                )
+                            }
+
+                            if (p.isLastChunk) {
+                                isDone = true
+                            }
+                        }
                     }
+                    bos.flush()
+                    try {
+                        fos.fd.sync()
+                    } catch (_: Exception) {}
+                } finally {
+                    try {
+                        bos.close()
+                    } catch (_: Exception) {}
+                    try {
+                        fos.close()
+                    } catch (_: Exception) {}
+                }
 
-                    while (sessionManager.isPaused && !sessionManager.isCancelled) {
-                        delay(200)
-                    }
+                // Move temp file to final destination
+                val safeFileName = File(meta.fileName).name.ifBlank { "received_${meta.payloadId}" }
+                val targetFile = resolveNameConflict(File(downloadDir, safeFileName))
+                var savedFile = targetFile
 
-                    val chunkRaw = transport.receiveFrame()
-                    val chunkDecrypted = codec.decrypt(chunkRaw)
-                    val frame = NearbyFrames.decodeFrame(chunkDecrypted)
-
-                    if (frame is NearbyFrames.ParsedFrame.Control && frame.control.action == "CANCEL") {
-                        sessionManager.cancelTransfer()
-                        return@withContext
-                    }
-
-                    if (frame is NearbyFrames.ParsedFrame.Payload) {
-                        val p = frame.transfer
-                        raf.write(p.chunkData)
-                        fileBytesReceived += p.chunkData.size
-                        transferredTotal += p.chunkData.size
-
-                        sessionManager.updateMetrics(
-                            fileName = meta.fileName,
-                            fileIndex = index + 1,
-                            totalFiles = incomingFiles.size,
-                            transferredBytes = transferredTotal,
-                            totalBytes = totalBytes
-                        )
-
-                        if (p.isLastChunk) {
-                            isDone = true
+                val moved = tempFile.renameTo(targetFile)
+                if (!moved) {
+                    try {
+                        tempFile.copyTo(targetFile, overwrite = true)
+                        tempFile.delete()
+                        savedFile = targetFile
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Fallback move failed: ${e.message}", e)
+                        // Make sure file isn't left as hidden dot-file
+                        val unhiddenFile = File(downloadDir, safeFileName)
+                        if (tempFile.renameTo(unhiddenFile)) {
+                            savedFile = unhiddenFile
+                        } else {
+                            savedFile = tempFile
                         }
                     }
                 }
-                raf.close()
 
-                // Move temp file to final destination
-                val destinationFile = File(downloadDir, meta.fileName)
-                tempFile.renameTo(destinationFile)
+                // Verify file exists and has data
+                if (!savedFile.exists() || (meta.fileSize > 0L && savedFile.length() == 0L)) {
+                    Log.e(TAG, "File save verification failed: ${savedFile.absolutePath} does not exist or empty")
+                    val failAck = NearbyFrames.encodePayloadAck(NearbyFrames.PayloadAck(meta.payloadId, false))
+                    transport.sendFrameDirect(codec.encrypt(failAck))
+                    sessionManager.markFailed("Failed to save ${meta.fileName}")
+                    return@withContext
+                }
+
+                // Determine accurate MIME type for Android MediaStore
+                val ext = savedFile.extension.lowercase()
+                val mime = if (ext.isNotEmpty()) {
+                    MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+                } else {
+                    meta.mimeType.takeIf { it != "*/*" }
+                }
 
                 // Trigger Android MediaStore indexer
                 MediaScannerConnection.scanFile(
                     context,
-                    arrayOf(destinationFile.absolutePath),
-                    arrayOf(meta.mimeType)
+                    arrayOf(savedFile.absolutePath),
+                    if (mime != null) arrayOf(mime) else null
                 ) { path, uri ->
                     Log.d(TAG, "Indexed received file into MediaStore: $path -> $uri")
                 }
 
+                // Additional fallback scan broadcast for custom Android skins (MIUI, ColorOS)
+                try {
+                    val scanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                        data = Uri.fromFile(savedFile)
+                    }
+                    context.sendBroadcast(scanIntent)
+                } catch (_: Exception) {}
+
                 // Send PayloadAck
                 val ack = NearbyFrames.encodePayloadAck(NearbyFrames.PayloadAck(meta.payloadId, true))
-                transport.sendFrame(codec.encrypt(ack))
+                transport.sendFrameDirect(codec.encrypt(ack))
             }
 
             sessionManager.markCompleted()

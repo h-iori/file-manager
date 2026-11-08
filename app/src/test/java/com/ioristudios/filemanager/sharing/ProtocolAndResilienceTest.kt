@@ -156,6 +156,51 @@ class ProtocolAndResilienceTest {
         val parsedCtrl = NearbyFrames.decodeFrame(ctrlBytes)
         assertTrue(parsedCtrl is NearbyFrames.ParsedFrame.Control)
         assertEquals("PAUSE", (parsedCtrl as NearbyFrames.ParsedFrame.Control).control.action)
+
+        // 5. ChannelInit for Multi-Connection Parallel Mode
+        val chInit = NearbyFrames.ChannelInit(channelId = 3, sessionToken = "token_abc123")
+        val chInitBytes = NearbyFrames.encodeChannelInit(chInit)
+        val parsedChInit = NearbyFrames.decodeFrame(chInitBytes)
+        assertTrue(parsedChInit is NearbyFrames.ParsedFrame.ChannelInitFrame)
+        val decodedInit = (parsedChInit as NearbyFrames.ParsedFrame.ChannelInitFrame).init
+        assertEquals(3, decodedInit.channelId)
+        assertEquals("token_abc123", decodedInit.sessionToken)
+
+        // 6. BandwidthUpgrade
+        val upgrade = NearbyFrames.BandwidthUpgrade(
+            medium = "PARALLEL_CHANNELS",
+            ssid = "token123",
+            password = "",
+            ipAddress = "192.168.1.10",
+            port = 4
+        )
+        val upgradeBytes = NearbyFrames.encodeBandwidthUpgrade(upgrade)
+        val parsedUpgrade = NearbyFrames.decodeFrame(upgradeBytes)
+        assertTrue(parsedUpgrade is NearbyFrames.ParsedFrame.Upgrade)
+        assertEquals("PARALLEL_CHANNELS", (parsedUpgrade as NearbyFrames.ParsedFrame.Upgrade).upgrade.medium)
+        assertEquals(4, parsedUpgrade.upgrade.port)
+    }
+
+    @Test
+    fun testSecureMessageCodecDuplicateAndMultipleRounds() {
+        val clientKey = ByteArray(32) { 1 }
+        val serverKey = ByteArray(32) { 2 }
+        val clientHmac = ByteArray(32) { 3 }
+        val serverHmac = ByteArray(32) { 4 }
+
+        val clientCodec = SecureMessageCodec(clientKey, serverKey, clientHmac, serverHmac)
+        val serverCodec = SecureMessageCodec(serverKey, clientKey, serverHmac, clientHmac)
+
+        // Verify duplicate works independently
+        val dupClient = clientCodec.duplicate()
+        val dupServer = serverCodec.duplicate()
+
+        for (i in 1..20) {
+            val message = "Message round $i - high throughput payload test".toByteArray(Charsets.UTF_8)
+            val encrypted = dupClient.encrypt(message)
+            val decrypted = dupServer.decrypt(encrypted)
+            assertArrayEquals(message, decrypted)
+        }
     }
 
     @Test

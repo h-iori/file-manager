@@ -335,6 +335,10 @@ fun TransferProgressModal(
                         TransferLifecycleStatus.PAUSED -> "TRANSFER PAUSED"
                         TransferLifecycleStatus.COMPLETED -> "TRANSFER COMPLETE"
                         TransferLifecycleStatus.FAILED -> "TRANSFER FAILED"
+                        TransferLifecycleStatus.CANCELLED -> "TRANSFER CANCELLED"
+                        TransferLifecycleStatus.CONNECTING -> "CONNECTING..."
+                        TransferLifecycleStatus.HANDSHAKING -> "HANDSHAKING..."
+                        TransferLifecycleStatus.WAITING_APPROVAL -> "WAITING FOR APPROVAL..."
                         else -> "CONNECTING..."
                     },
                     fontFamily = OrbitronFontFamily,
@@ -343,7 +347,7 @@ fun TransferProgressModal(
                     letterSpacing = 1.sp,
                     color = when (snapshot.status) {
                         TransferLifecycleStatus.COMPLETED -> ChartAvailableEmerald
-                        TransferLifecycleStatus.FAILED -> PdfRed
+                        TransferLifecycleStatus.FAILED, TransferLifecycleStatus.CANCELLED -> PdfRed
                         TransferLifecycleStatus.PAUSED -> Color(0xFFFBBF24)
                         else -> ElectricCyan
                     }

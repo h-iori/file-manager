@@ -34,7 +34,10 @@ class ProtobufLite {
     /**
      * Binary Protobuf Writer
      */
-    class Writer(private val out: ByteArrayOutputStream = ByteArrayOutputStream()) {
+    class Writer(private val out: ByteArrayOutputStream) {
+
+        constructor() : this(ByteArrayOutputStream())
+        constructor(initialCapacity: Int) : this(ByteArrayOutputStream(initialCapacity))
 
         fun writeTag(fieldNumber: Int, wireType: Int): Writer {
             writeVarint32(makeTag(fieldNumber, wireType))

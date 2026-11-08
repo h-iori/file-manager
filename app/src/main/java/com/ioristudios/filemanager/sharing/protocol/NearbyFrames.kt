@@ -18,6 +18,12 @@ object NearbyFrames {
     const val FRAME_PAYLOAD_ACK = 8
     const val FRAME_BANDWIDTH_UPGRADE = 9
     const val FRAME_TRANSFER_CONTROL = 10
+    const val FRAME_CHANNEL_INIT = 11
+
+    data class ChannelInit(
+        val channelId: Int,
+        val sessionToken: String
+    )
 
     data class FilePayloadMeta(
         val payloadId: Long,
@@ -115,12 +121,12 @@ object NearbyFrames {
     }
 
     fun encodePayloadTransfer(transfer: PayloadTransfer): ByteArray {
-        val inner = ProtobufLite.Writer()
+        val inner = ProtobufLite.Writer(transfer.chunkData.size + 64)
             .writeInt64(1, transfer.payloadId)
             .writeInt64(2, transfer.offset)
             .writeBytes(3, transfer.chunkData)
             .writeBool(4, transfer.isLastChunk)
-        return ProtobufLite.Writer()
+        return ProtobufLite.Writer(transfer.chunkData.size + 96)
             .writeInt32(1, FRAME_PAYLOAD_TRANSFER)
             .writeMessage(2, inner)
             .toByteArray()
@@ -160,6 +166,16 @@ object NearbyFrames {
             .toByteArray()
     }
 
+    fun encodeChannelInit(init: ChannelInit): ByteArray {
+        val inner = ProtobufLite.Writer()
+            .writeInt32(1, init.channelId)
+            .writeString(2, init.sessionToken)
+        return ProtobufLite.Writer()
+            .writeInt32(1, FRAME_CHANNEL_INIT)
+            .writeMessage(2, inner)
+            .toByteArray()
+    }
+
     // --- Decoders ---
 
     sealed class ParsedFrame {
@@ -172,6 +188,7 @@ object NearbyFrames {
         data class Ack(val ack: PayloadAck) : ParsedFrame()
         data class Upgrade(val upgrade: BandwidthUpgrade) : ParsedFrame()
         data class Control(val control: TransferControl) : ParsedFrame()
+        data class ChannelInitFrame(val init: ChannelInit) : ParsedFrame()
         object Unknown : ParsedFrame()
     }
 
@@ -315,6 +332,20 @@ object NearbyFrames {
                     }
                 }
                 ParsedFrame.Control(TransferControl(pId, action))
+            }
+            FRAME_CHANNEL_INIT -> {
+                val r = ProtobufLite.Reader(payloadData)
+                var chId = 0
+                var token = ""
+                while (!r.isAtEnd()) {
+                    val tag = r.readTag() ?: break
+                    when (ProtobufLite.getTagFieldNumber(tag)) {
+                        1 -> chId = r.readVarint32()
+                        2 -> token = r.readString()
+                        else -> r.skipField(ProtobufLite.getTagWireType(tag))
+                    }
+                }
+                ParsedFrame.ChannelInitFrame(ChannelInit(chId, token))
             }
             else -> ParsedFrame.Unknown
         }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
@@ -54,6 +55,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ioristudios.filemanager.data.DirectoryItem
+import com.ioristudios.filemanager.haptics.HapticType
+import com.ioristudios.filemanager.haptics.LocalAppHaptics
 import com.ioristudios.filemanager.theme.BgDeepDark
 import com.ioristudios.filemanager.theme.CardBorderPurple
 import com.ioristudios.filemanager.theme.CardGradientEnd
@@ -81,6 +84,7 @@ fun ShareFilePickerSheet(
     onDismiss: () -> Unit,
     onConfirmSelection: (List<File>) -> Unit
 ) {
+    val haptics = LocalAppHaptics.current
     val dirState by viewModel.directoryUiState.collectAsStateWithLifecycle()
     val homeState by viewModel.homeUiState.collectAsStateWithLifecycle()
 
@@ -91,16 +95,20 @@ fun ShareFilePickerSheet(
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     val categories = listOf("All", "Downloads", "Documents", "Pictures", "DCIM", "Music")
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    // Ensure directory is loaded when picker opens
+    LaunchedEffect(Unit) {
+        if (dirState.items.isEmpty()) {
+            val root = android.os.Environment.getExternalStorageDirectory()
+            viewModel.openDirectory(root.absolutePath)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgDeepDark)
+            .padding(top = 16.dp, bottom = 4.dp, start = 16.dp, end = 16.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BgDeepDark)
-                .padding(top = 28.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)
-        ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header Bar
                 Row(
@@ -349,69 +357,123 @@ fun ShareFilePickerSheet(
                 }
             }
 
-            // Bottom Floating Confirmation Bar
+            // Bottom Docked Glass Confirmation Bar
+            val canSend = selectedFiles.isNotEmpty()
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF0F0922))
-                    .border(1.dp, CardBorderPurple.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
-                    .padding(14.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xF0181135), Color(0xF50C071E))
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(
+                            listOf(
+                                if (canSend) ElectricCyan.copy(alpha = 0.6f) else CardBorderPurple.copy(alpha = 0.35f),
+                                if (canSend) ElectricPurple.copy(alpha = 0.5f) else Color(0x22FFFFFF),
+                                CardBorderPurple.copy(alpha = 0.2f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(22.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "${selectedFiles.size} FILES SELECTED",
-                            fontFamily = OrbitronFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = ElectricCyan
-                        )
-                        val totalBytes = selectedFiles.sumOf { it.length() }
-                        Text(
-                            text = formatBytes(totalBytes),
-                            fontFamily = OutfitFontFamily,
-                            fontSize = 11.sp,
-                            color = TextSecondary
-                        )
+                    // Left: File Count and Size with Glowing Icon
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (canSend) ElectricCyan.copy(alpha = 0.16f) else Color(0xFF1E1736))
+                                .border(1.dp, if (canSend) ElectricCyan.copy(alpha = 0.5f) else Color(0x33FFFFFF), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
+                                contentDescription = null,
+                                tint = if (canSend) ElectricCyan else TextMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Column {
+                            val count = selectedFiles.size
+                            Text(
+                                text = if (count == 0) "NO FILES SELECTED" else if (count == 1) "1 FILE SELECTED" else "$count FILES SELECTED",
+                                fontFamily = OrbitronFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                letterSpacing = 0.8.sp,
+                                color = if (canSend) ElectricCyan else TextMuted
+                            )
+                            val totalBytes = selectedFiles.sumOf { it.length() }
+                            Text(
+                                text = if (count == 0) "Tap files above to select" else formatBytes(totalBytes),
+                                fontFamily = OutfitFontFamily,
+                                fontWeight = FontWeight.Normal,
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
 
-                    // Confirm Selection Button
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Right: Prominent Send Button
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (selectedFiles.isNotEmpty()) Brush.horizontalGradient(
+                                if (canSend) Brush.horizontalGradient(
                                     listOf(ElectricCyan, ElectricPurple)
                                 ) else Brush.horizontalGradient(
-                                    listOf(Color(0xFF231C38), Color(0xFF1D1630))
+                                    listOf(Color(0xFF261D3D), Color(0xFF1B142E))
                                 )
                             )
-                            .clickable(enabled = selectedFiles.isNotEmpty()) {
+                            .clickable(enabled = canSend) {
+                                haptics.trigger(HapticType.SUCCESS_CONFIRM)
                                 onConfirmSelection(selectedFiles.toList())
-                                onDismiss()
                             }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(horizontal = 20.dp, vertical = 11.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Add to Queue",
-                            fontFamily = OutfitFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (selectedFiles.isNotEmpty()) Color(0xFF07040D) else TextMuted
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send",
+                                tint = if (canSend) Color(0xFF07040D) else TextMuted,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "SEND",
+                                fontFamily = OrbitronFontFamily,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                letterSpacing = 1.sp,
+                                color = if (canSend) Color(0xFF07040D) else TextMuted
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
 
 private fun formatBytes(bytes: Long): String {
     return when {

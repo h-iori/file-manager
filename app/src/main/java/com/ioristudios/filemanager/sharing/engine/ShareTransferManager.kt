@@ -10,6 +10,7 @@ import com.ioristudios.filemanager.sharing.resilience.TransferLifecycleStatus
 import com.ioristudios.filemanager.sharing.resilience.TransferProgressSnapshot
 import com.ioristudios.filemanager.sharing.resilience.TransferSessionManager
 import com.ioristudios.filemanager.sharing.service.ShareTransferService
+import com.ioristudios.filemanager.sharing.transport.HotspotManager
 import com.ioristudios.filemanager.sharing.transport.SocketTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,8 +28,18 @@ enum class ShareMode {
     RECEIVE
 }
 
+enum class ShareScreenState {
+    LANDING,        // Hero Send & Receive Cards, device status, zero scanning/advertising
+    SEND_PICKER,    // In-app File Manager multi-select picker + bottom SEND CTA button
+    SEND_RADAR,     // Radar Scanner actively discovering nearby peers; tap peer to send
+    RECEIVE_BEACON, // Receiver beacon actively advertising and listening; waiting for sender
+    TRANSFER_ACTIVE // Transfer Progress Screen with real-time MB/s, progress bar, pause, resume, cancel
+}
+
 /**
  * Top-level coordinator for wireless P2P file sharing.
+ * Implements strict 5-state lifecycle: zero background scanning/advertising when idle.
+ * Supports Wi-Fi LAN direct P2P as well as direct Hotspot P2P for non-Wi-Fi environments.
  */
 class ShareTransferManager(private val context: Context) {
 
@@ -43,6 +54,11 @@ class ShareTransferManager(private val context: Context) {
     val mdnsManager = NearbyMdnsManager(context)
     val sessionManager = TransferSessionManager()
     val transferEngine = FileTransferEngine(context, sessionManager)
+    val parallelEngine = ParallelTransferEngine(context, sessionManager, parallelChannels = 4)
+    val hotspotManager = HotspotManager(context)
+
+    private val _screenState = MutableStateFlow(ShareScreenState.LANDING)
+    val screenState: StateFlow<ShareScreenState> = _screenState.asStateFlow()
 
     private val _shareMode = MutableStateFlow(ShareMode.SEND)
     val shareMode: StateFlow<ShareMode> = _shareMode.asStateFlow()
@@ -62,6 +78,12 @@ class ShareTransferManager(private val context: Context) {
     private val _showApprovalSheet = MutableStateFlow(false)
     val showApprovalSheet: StateFlow<Boolean> = _showApprovalSheet.asStateFlow()
 
+    private val _hotspotSsid = MutableStateFlow<String?>(null)
+    val hotspotSsid: StateFlow<String?> = _hotspotSsid.asStateFlow()
+
+    private val _hotspotPassword = MutableStateFlow<String?>(null)
+    val hotspotPassword: StateFlow<String?> = _hotspotPassword.asStateFlow()
+
     init {
         // Wire notification actions from ShareTransferService
         ShareTransferService.onActionReceived = { action ->
@@ -73,13 +95,56 @@ class ShareTransferManager(private val context: Context) {
         }
     }
 
-    fun setShareMode(mode: ShareMode) {
-        if (_shareMode.value == mode) return
-        _shareMode.value = mode
+    // --- State Machine Navigation ---
+
+    /**
+     * User taps Hero "Send" on Landing Screen -> Opens In-App File Picker
+     */
+    fun openSendFlow() {
         stopAll()
-        if (mode == ShareMode.RECEIVE) {
-            startAdvertising()
-        }
+        sessionManager.reset()
+        _selectedFiles.value = emptyList()
+        _shareMode.value = ShareMode.SEND
+        _screenState.value = ShareScreenState.SEND_PICKER
+    }
+
+    /**
+     * User clicks bottom "SEND" in File Picker -> Transitions to Radar Screen & begins scanning
+     */
+    fun confirmSendAndScan() {
+        if (_selectedFiles.value.isEmpty()) return
+        sessionManager.reset()
+        _screenState.value = ShareScreenState.SEND_RADAR
+        startScanningForPeers()
+    }
+
+    /**
+     * User taps "Edit Selection" on Radar Screen -> Returns to Picker, pauses scanning
+     */
+    fun backToPicker() {
+        stopScanningForPeers()
+        sessionManager.reset()
+        _screenState.value = ShareScreenState.SEND_PICKER
+    }
+
+    /**
+     * User taps Hero "Receive" on Landing Screen -> Opens Receiving Beacon & begins advertising
+     */
+    fun openReceiveFlow() {
+        stopAll()
+        sessionManager.reset()
+        _shareMode.value = ShareMode.RECEIVE
+        _screenState.value = ShareScreenState.RECEIVE_BEACON
+        startAdvertising()
+    }
+
+    /**
+     * User taps Back from any stage -> Returns to clean Landing Screen and stops all network work
+     */
+    fun backToLanding() {
+        stopAll()
+        sessionManager.reset()
+        _screenState.value = ShareScreenState.LANDING
     }
 
     fun setSelectedFiles(files: List<File>) {
@@ -102,7 +167,6 @@ class ShareTransferManager(private val context: Context) {
     }
 
     fun startScanningForPeers() {
-        if (_selectedFiles.value.isEmpty()) return
         _isScanning.value = true
         mdnsManager.startDiscovery()
     }
@@ -110,10 +174,6 @@ class ShareTransferManager(private val context: Context) {
     fun stopScanningForPeers() {
         _isScanning.value = false
         mdnsManager.stopDiscovery()
-    }
-
-    fun startDiscovery() {
-        startScanningForPeers()
     }
 
     fun startAdvertising() {
@@ -125,9 +185,9 @@ class ShareTransferManager(private val context: Context) {
                 val devName = Build.MODEL ?: "Android Quick Share"
                 mdnsManager.startAdvertising(port, devName)
 
-                // Start receiver loop
+                // Start receiver loop with high-speed parallel engine & Google Files fallback
                 transferJob = scope.launch {
-                    transferEngine.receiveFiles(
+                    parallelEngine.receiveFiles(
                         serverSocket = ss,
                         onRequireApproval = { peerName, pin, files ->
                             _pairingPeerName.value = peerName
@@ -142,15 +202,38 @@ class ShareTransferManager(private val context: Context) {
         }
     }
 
+    /**
+     * Toggles a Direct Local-Only Hotspot on this device (for non-Wi-Fi environments)
+     */
+    fun startDirectHotspot(onResult: (Boolean, String) -> Unit) {
+        hotspotManager.startHotspot(
+            onStarted = { ssid, pass ->
+                _hotspotSsid.value = ssid
+                _hotspotPassword.value = pass
+                onResult(true, "Hotspot active: $ssid")
+            },
+            onFailed = { reason ->
+                onResult(false, reason)
+            }
+        )
+    }
+
+    fun stopDirectHotspot() {
+        hotspotManager.stopHotspot()
+        _hotspotSsid.value = null
+        _hotspotPassword.value = null
+    }
+
     fun connectAndSend(peer: DiscoveredPeer) {
         val files = _selectedFiles.value
         if (files.isEmpty()) return
 
         transferJob?.cancel()
+        _screenState.value = ShareScreenState.TRANSFER_ACTIVE
         ShareTransferService.startService(context)
 
         transferJob = scope.launch {
-            transferEngine.sendFiles(
+            parallelEngine.sendFiles(
                 peer = peer,
                 filesToSend = files,
                 onPinGenerated = { pin ->
@@ -164,47 +247,62 @@ class ShareTransferManager(private val context: Context) {
     fun answerApproval(accepted: Boolean) {
         _showApprovalSheet.value = false
         if (accepted) {
+            _screenState.value = ShareScreenState.TRANSFER_ACTIVE
             ShareTransferService.startService(context)
         }
+        parallelEngine.answerApproval(accepted)
         transferEngine.answerApproval(accepted)
     }
 
     fun pauseTransfer() {
+        parallelEngine.pauseActiveTransfer()
         transferEngine.pauseActiveTransfer()
     }
 
     fun resumeTransfer() {
+        parallelEngine.resumeActiveTransfer()
         transferEngine.resumeActiveTransfer()
     }
 
     fun cancelTransfer() {
         transferJob?.cancel()
+        transferJob = null
+        parallelEngine.cancelActiveTransfer()
         transferEngine.cancelActiveTransfer()
+        sessionManager.reset()
         ShareTransferService.stopService(context)
         _showApprovalSheet.value = false
         _pairingPin.value = null
         _pairingPeerName.value = null
+        _screenState.value = ShareScreenState.LANDING
     }
 
     fun dismissCompleted() {
+        transferJob?.cancel()
+        transferJob = null
         sessionManager.reset()
         _pairingPin.value = null
         _pairingPeerName.value = null
         _showApprovalSheet.value = false
         ShareTransferService.stopService(context)
-        if (_shareMode.value == ShareMode.RECEIVE) {
-            startAdvertising()
-        }
+        _screenState.value = ShareScreenState.LANDING
     }
 
     fun stopAll() {
-        cancelTransfer()
+        transferJob?.cancel()
+        transferJob = null
+        parallelEngine.cancelActiveTransfer()
+        transferEngine.cancelActiveTransfer()
+        sessionManager.reset()
         stopScanningForPeers()
+        stopDirectHotspot()
         mdnsManager.clear()
         try {
             serverSocket?.close()
         } catch (_: Exception) {}
         serverSocket = null
+        _pairingPin.value = null
+        _pairingPeerName.value = null
+        _showApprovalSheet.value = false
     }
 }
-

@@ -10,6 +10,7 @@ data class DiscoveredPeer(
     val hostAddress: String? = null,
     val port: Int = 0,
     val rssi: Int = 0,
+    val isFastApp: Boolean = false,
     val lastSeenTimestamp: Long = System.currentTimeMillis()
 )
 
