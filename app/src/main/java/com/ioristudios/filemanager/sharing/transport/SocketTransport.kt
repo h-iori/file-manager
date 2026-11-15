@@ -16,13 +16,31 @@ import java.net.Socket
 
 /**
  * High-performance TCP transport layer for peer-to-peer file transfer.
- * Features 512KB I/O stream buffering, 1MB socket buffers, zero-overhead direct framing,
- * and dual-stack IPv4 priority.
+ * Features zero-copy chunk framing, kernel TCP buffer auto-tuning, and dual-stack IPv4 priority.
  */
 class SocketTransport(val socket: Socket) {
 
-    private val inputStream = DataInputStream(BufferedInputStream(socket.getInputStream(), 1024 * 1024))
-    private val outputStream = DataOutputStream(BufferedOutputStream(socket.getOutputStream(), 1024 * 1024))
+    // Small stream buffers: large chunk frames bypass them entirely (no extra memcpy),
+    // while small control frames are still coalesced into a single write.
+    private val rawOutput = socket.getOutputStream()
+    private val inputStream = DataInputStream(BufferedInputStream(socket.getInputStream(), 64 * 1024))
+    private val outputStream = DataOutputStream(BufferedOutputStream(rawOutput, 64 * 1024))
+
+    /** Reusable receive buffer for [receiveFrameInto]; grows as needed. */
+    class FrameBuffer(initialCapacity: Int = 64 * 1024) {
+        var data = ByteArray(initialCapacity)
+        var length = 0
+    }
+
+    /**
+     * Held while encrypting AND sending a frame, so frames that share this socket's codec
+     * hit the wire in sequence-number order (the receiver rejects any reordering).
+     */
+    val sendLock = Any()
+
+    fun setReadTimeout(ms: Int) {
+        try { socket.soTimeout = ms } catch (_: Exception) {}
+    }
 
     val isConnected: Boolean
         get() = socket.isConnected && !socket.isClosed
@@ -35,6 +53,33 @@ class SocketTransport(val socket: Socket) {
             outputStream.writeInt(bytes.size)
             outputStream.write(bytes)
             outputStream.flush()
+        }
+    }
+
+    /**
+     * Sends a frame whose 4-byte big-endian length prefix the caller has already written into
+     * buf[off, off+4). The whole frame goes to the socket in a single write with no copying.
+     */
+    fun sendPrefixedFrame(buf: ByteArray, off: Int, totalLen: Int) {
+        synchronized(outputStream) {
+            outputStream.flush() // drain any buffered control frame first to keep ordering
+            rawOutput.write(buf, off, totalLen)
+            rawOutput.flush()
+        }
+    }
+
+    /**
+     * Reads a length-prefixed packet into [fb], reusing its buffer (no per-frame allocation).
+     */
+    fun receiveFrameInto(fb: FrameBuffer) {
+        synchronized(inputStream) {
+            val length = inputStream.readInt()
+            if (length < 0 || length > 16 * 1024 * 1024) { // 16MB frame limit
+                throw IllegalStateException("Invalid packet length: $length")
+            }
+            if (fb.data.size < length) fb.data = ByteArray(length)
+            inputStream.readFully(fb.data, 0, length)
+            fb.length = length
         }
     }
 
@@ -151,16 +196,17 @@ class SocketTransport(val socket: Socket) {
         }
 
         /**
-         * Configures high-performance socket options: 2MB send/receive buffers,
-         * TCP_NODELAY (disable Nagle), keepAlive, and 45s read timeout.
+         * Configures socket options: TCP_NODELAY (disable Nagle), keepAlive, and 45s read timeout.
+         *
+         * Send/receive buffer sizes are intentionally NOT set: an explicit SO_RCVBUF/SO_SNDBUF
+         * disables Linux TCP auto-tuning, which on Android Wi-Fi grows windows up to 4-8 MB
+         * (config_wifi_tcp_buffers) - larger than any fixed value we could safely pick.
          */
         fun configureSocket(socket: Socket) {
             try {
                 socket.tcpNoDelay = true
                 socket.keepAlive = true
                 socket.soTimeout = 45000 // 45s read timeout
-                socket.sendBufferSize = 2 * 1024 * 1024 // 2 MB buffer for high throughput
-                socket.receiveBufferSize = 2 * 1024 * 1024 // 2 MB buffer
             } catch (e: Exception) {
                 Log.w(TAG, "Warning configuring connected socket options: ${e.message}")
             }

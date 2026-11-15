@@ -12,6 +12,7 @@ import com.ioristudios.filemanager.sharing.resilience.TransferSessionManager
 import com.ioristudios.filemanager.sharing.service.ShareTransferService
 import com.ioristudios.filemanager.sharing.transport.HotspotManager
 import com.ioristudios.filemanager.sharing.transport.SocketTransport
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,7 +48,15 @@ class ShareTransferManager(private val context: Context) {
         private const val TAG = "ShareTransferManager"
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // Last line of defence: an unexpected error in a transfer must never crash the whole app
+    // (a remote peer controls much of the input those coroutines process).
+    private val crashGuard = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Unhandled error in share transfer", throwable)
+        if (!sessionManager.isCancelled) {
+            sessionManager.markFailed(throwable.message ?: "Unexpected transfer error")
+        }
+    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + crashGuard)
     private var transferJob: Job? = null
     private var serverSocket: ServerSocket? = null
 
@@ -74,6 +83,10 @@ class ShareTransferManager(private val context: Context) {
 
     private val _pairingPeerName = MutableStateFlow<String?>(null)
     val pairingPeerName: StateFlow<String?> = _pairingPeerName.asStateFlow()
+
+    /** Files the sender wants to deliver, shown on the receiver's approval dialog. */
+    private val _incomingFiles = MutableStateFlow<List<NearbyFrames.FilePayloadMeta>>(emptyList())
+    val incomingFiles: StateFlow<List<NearbyFrames.FilePayloadMeta>> = _incomingFiles.asStateFlow()
 
     private val _showApprovalSheet = MutableStateFlow(false)
     val showApprovalSheet: StateFlow<Boolean> = _showApprovalSheet.asStateFlow()
@@ -192,7 +205,13 @@ class ShareTransferManager(private val context: Context) {
                         onRequireApproval = { peerName, pin, files ->
                             _pairingPeerName.value = peerName
                             _pairingPin.value = pin
+                            _incomingFiles.value = files
                             _showApprovalSheet.value = true
+                        },
+                        onApprovalExpired = {
+                            // Sender gave up waiting; close the stale dialog
+                            _showApprovalSheet.value = false
+                            _incomingFiles.value = emptyList()
                         }
                     )
                 }
@@ -229,6 +248,8 @@ class ShareTransferManager(private val context: Context) {
         if (files.isEmpty()) return
 
         transferJob?.cancel()
+        // mDNS discovery keeps multicasting on the same radio; stop it so the transfer gets all the airtime
+        stopScanningForPeers()
         _screenState.value = ShareScreenState.TRANSFER_ACTIVE
         ShareTransferService.startService(context)
 
@@ -246,6 +267,7 @@ class ShareTransferManager(private val context: Context) {
 
     fun answerApproval(accepted: Boolean) {
         _showApprovalSheet.value = false
+        _incomingFiles.value = emptyList()
         if (accepted) {
             _screenState.value = ShareScreenState.TRANSFER_ACTIVE
             ShareTransferService.startService(context)
@@ -272,6 +294,7 @@ class ShareTransferManager(private val context: Context) {
         sessionManager.reset()
         ShareTransferService.stopService(context)
         _showApprovalSheet.value = false
+        _incomingFiles.value = emptyList()
         _pairingPin.value = null
         _pairingPeerName.value = null
         _screenState.value = ShareScreenState.LANDING
@@ -284,6 +307,7 @@ class ShareTransferManager(private val context: Context) {
         _pairingPin.value = null
         _pairingPeerName.value = null
         _showApprovalSheet.value = false
+        _incomingFiles.value = emptyList()
         ShareTransferService.stopService(context)
         _screenState.value = ShareScreenState.LANDING
     }
@@ -304,5 +328,6 @@ class ShareTransferManager(private val context: Context) {
         _pairingPin.value = null
         _pairingPeerName.value = null
         _showApprovalSheet.value = false
+        _incomingFiles.value = emptyList()
     }
 }

@@ -39,6 +39,9 @@ class Ukey2Handshake(val isClient: Boolean) {
     private var m1Bytes: ByteArray? = null
     private var m2Bytes: ByteArray? = null
 
+    /** Server side: the P256_SHA512 commitment the client made in ClientInit. */
+    private var clientCommitment: ByteArray? = null
+
     var remotePublicKey: ECPublicKey? = null
         private set
     var authToken: ByteArray? = null
@@ -112,6 +115,35 @@ class Ukey2Handshake(val isClient: Boolean) {
         require(msgType == 1) { "Expected CLIENT_INIT message type 1, got $msgType" }
         m1Bytes = msgData
 
+        // Extract the client's commitment to its (not yet revealed) public key. Without it a
+        // man-in-the-middle could grind keys until both sides display the same 4-digit PIN.
+        val initReader = ProtobufLite.Reader(msgData)
+        while (!initReader.isAtEnd()) {
+            val tag = initReader.readTag() ?: break
+            if (ProtobufLite.getTagFieldNumber(tag) == 3) {
+                val commitmentReader = ProtobufLite.Reader(initReader.readBytes())
+                var cipher = 0
+                var commitment: ByteArray? = null
+                while (!commitmentReader.isAtEnd()) {
+                    val cTag = commitmentReader.readTag() ?: break
+                    when (ProtobufLite.getTagFieldNumber(cTag)) {
+                        1 -> cipher = commitmentReader.readVarint32()
+                        2 -> commitment = commitmentReader.readBytes()
+                        else -> commitmentReader.skipField(ProtobufLite.getTagWireType(cTag))
+                    }
+                }
+                if (cipher == 1 && commitment != null && commitment.size == 64) {
+                    clientCommitment = commitment
+                }
+            } else {
+                initReader.skipField(ProtobufLite.getTagWireType(tag))
+            }
+        }
+        if (clientCommitment == null) {
+            state = State.FAILED
+            throw SecurityException("ClientInit carries no P256_SHA512 cipher commitment")
+        }
+
         val serverPublicKeyBytes = keyPair.public.encoded
 
         val innerWriter = ProtobufLite.Writer()
@@ -162,9 +194,7 @@ class Ukey2Handshake(val isClient: Boolean) {
             }
         }
 
-        val kf = KeyFactory.getInstance("EC")
-        val ecSpec = X509EncodedKeySpec(serverPubKeyBytes)
-        val sKey = kf.generatePublic(ecSpec) as ECPublicKey
+        val sKey = parseAndValidateRemoteKey(serverPubKeyBytes)
         remotePublicKey = sKey
 
         deriveAllKeys(sKey)
@@ -211,13 +241,38 @@ class Ukey2Handshake(val isClient: Boolean) {
             }
         }
 
-        val kf = KeyFactory.getInstance("EC")
-        val ecSpec = X509EncodedKeySpec(clientPubKeyBytes)
-        val cKey = kf.generatePublic(ecSpec) as ECPublicKey
+        // Verify the revealed key matches the commitment from ClientInit (constant time).
+        // Accept both the commitment over the raw key (this app) and over the full
+        // ClientFinished message (reference UKEY2); both bind the key before ServerInit.
+        val sha512 = MessageDigest.getInstance("SHA-512")
+        val expected = clientCommitment ?: throw SecurityException("Missing client commitment")
+        val matchesKey = MessageDigest.isEqual(expected, sha512.digest(clientPubKeyBytes))
+        val matchesMessage = MessageDigest.isEqual(expected, sha512.digest(clientFinishedFrame))
+        if (!matchesKey && !matchesMessage) {
+            state = State.FAILED
+            throw SecurityException("Client public key does not match its commitment (possible MITM)")
+        }
+
+        val cKey = parseAndValidateRemoteKey(clientPubKeyBytes)
         remotePublicKey = cKey
 
         deriveAllKeys(cKey)
         state = State.COMPLETED
+    }
+
+    /**
+     * Decodes the peer's X.509 EC key and ensures it is on the same curve (P-256) as ours.
+     * The JCA provider additionally rejects points that are not on the curve.
+     */
+    private fun parseAndValidateRemoteKey(encoded: ByteArray): ECPublicKey {
+        if (encoded.isEmpty()) throw SecurityException("Peer sent an empty public key")
+        val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(encoded)) as? ECPublicKey
+            ?: throw SecurityException("Peer public key is not an EC key")
+        val ours = (keyPair.public as ECPublicKey).params
+        if (key.params.order != ours.order || key.params.curve != ours.curve || key.params.cofactor != ours.cofactor) {
+            throw SecurityException("Peer public key is not on P-256")
+        }
+        return key
     }
 
     /**

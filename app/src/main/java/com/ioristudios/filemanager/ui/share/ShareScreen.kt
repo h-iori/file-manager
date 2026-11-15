@@ -62,6 +62,7 @@ fun ShareScreen(
     val transferProgress by shareManager.sessionManager.progress.collectAsStateWithLifecycle()
     val showApprovalSheet by shareManager.showApprovalSheet.collectAsStateWithLifecycle()
     val pairingPin by shareManager.pairingPin.collectAsStateWithLifecycle()
+    val incomingFiles by shareManager.incomingFiles.collectAsStateWithLifecycle()
     val pairingPeerName by shareManager.pairingPeerName.collectAsStateWithLifecycle()
     val hotspotSsid by shareManager.hotspotSsid.collectAsStateWithLifecycle()
     val hotspotPassword by shareManager.hotspotPassword.collectAsStateWithLifecycle()
@@ -227,6 +228,7 @@ fun ShareScreen(
             PinVerificationDialog(
                 peerName = pairingPeerName ?: "Nearby Device",
                 pinCode = pairingPin!!,
+                files = incomingFiles,
                 onDecline = {
                     haptics.trigger(HapticType.DESTRUCTIVE)
                     shareManager.answerApproval(false)

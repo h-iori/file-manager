@@ -19,6 +19,11 @@ class SecureMessageCodec(
     private val verifyingHmacKey: ByteArray
 ) {
 
+    companion object {
+        /** Upper bound on [encryptPayloadChunk] output for a chunk of [dataLen] bytes (incl. cipher slack). */
+        fun maxEncryptedPayloadSize(dataLen: Int): Int = dataLen + 256
+    }
+
     private val secureRandom = SecureRandom()
     private var sendSequenceNumber: Long = 1
     private var receiveSequenceNumber: Long = 1
@@ -92,6 +97,198 @@ class SecureMessageCodec(
         return secureMessageWriter.toByteArray()
     }
 
+    /** Once a peer has sent sequence numbers, every later message on this codec must carry one. */
+    private var sequenceEnforced = false
+
+    /**
+     * Anti-replay check: each message must carry exactly the next sequence number for this
+     * codec (one codec per socket and direction). Replayed, reordered, dropped or
+     * cross-socket frames are therefore rejected. Called only after the HMAC verified.
+     */
+    private fun verifySequence(seq: Long?) {
+        if (seq == null) {
+            if (sequenceEnforced) throw GeneralSecurityException("SecureMessage is missing its sequence number")
+            return
+        }
+        if (seq != receiveSequenceNumber) {
+            throw GeneralSecurityException(
+                "Replayed or out-of-order SecureMessage (expected #$receiveSequenceNumber, got #$seq)"
+            )
+        }
+        sequenceEnforced = true
+        receiveSequenceNumber++
+    }
+
+    /**
+     * Derives an independent codec for a parallel data channel (e.g. "channel-2"). Each channel gets
+     * its own keys, so a frame captured on one socket can never be accepted on another.
+     * Both peers derive the same keys (sender's encryption key == receiver's decryption key).
+     */
+    fun deriveChannelCodec(label: String): SecureMessageCodec {
+        val salt = "FastShare channel keys v1".toByteArray(Charsets.UTF_8)
+        val info = label.toByteArray(Charsets.UTF_8)
+        return SecureMessageCodec(
+            encryptionKey = Hkdf.deriveKey(salt, encryptionKey, info, 32),
+            decryptionKey = Hkdf.deriveKey(salt, decryptionKey, info, 32),
+            signingHmacKey = Hkdf.deriveKey(salt, signingHmacKey, info, 32),
+            verifyingHmacKey = Hkdf.deriveKey(salt, verifyingHmacKey, info, 32)
+        )
+    }
+
+    // Scratch space reused by the zero-copy hot path (guarded by @Synchronized).
+    private val prefixScratch = ByteArray(64)
+    private val ivScratch = ByteArray(16)
+    private val macScratch = ByteArray(32)
+
+    /**
+     * Zero-copy equivalent of `encrypt(NearbyFrames.encodePayloadTransfer(...))`.
+     *
+     * Produces byte-identical wire output (same SecureMessage layout, AES-256-CBC + HMAC-SHA256),
+     * but encrypts the chunk straight from [data] into [out] with no intermediate buffers.
+     * The encoded message is written to [out] starting at [outOffset]; returns its length.
+     * [out] must be at least `outOffset + maxEncryptedPayloadSize(dataLen)` bytes.
+     */
+    @Synchronized
+    fun encryptPayloadChunk(
+        payloadId: Long,
+        offset: Long,
+        data: ByteArray,
+        dataOffset: Int,
+        dataLen: Int,
+        isLast: Boolean,
+        out: ByteArray,
+        outOffset: Int
+    ): Int {
+        val prefixLen = NearbyFrames.writePayloadTransferPrefix(prefixScratch, payloadId, offset, dataLen)
+        val suffix = NearbyFrames.payloadTransferSuffix(isLast)
+        val plaintextLen = prefixLen + dataLen + suffix.size
+        val ciphertextLen = (plaintextLen / 16 + 1) * 16 // PKCS5 always pads 1..16 bytes
+
+        secureRandom.nextBytes(ivScratch)
+        val seq = sendSequenceNumber++
+
+        // Header { 1: sig scheme, 2: enc scheme, 3: iv, 4: sequence }
+        val headerLen = 2 + 2 + 2 + 16 + 1 + ProtobufLite.varintSize64(seq)
+        val headerAndBodyLen = 1 + ProtobufLite.varintSize32(headerLen) + headerLen +
+            1 + ProtobufLite.varintSize32(ciphertextLen) + ciphertextLen
+
+        var p = outOffset
+        out[p++] = 0x0A // SecureMessage.header_and_body
+        p = ProtobufLite.putVarint32(out, p, headerAndBodyLen)
+        val habStart = p
+        out[p++] = 0x0A // HeaderAndBody.header
+        p = ProtobufLite.putVarint32(out, p, headerLen)
+        out[p++] = 0x08; out[p++] = 1 // signature_scheme = HMAC_SHA256
+        out[p++] = 0x10; out[p++] = 1 // encryption_scheme = AES_256_CBC
+        out[p++] = 0x1A; out[p++] = 16 // iv
+        System.arraycopy(ivScratch, 0, out, p, 16); p += 16
+        out[p++] = 0x20 // sequence_number
+        p = ProtobufLite.putVarint64(out, p, seq)
+        out[p++] = 0x12 // HeaderAndBody.body
+        p = ProtobufLite.putVarint32(out, p, ciphertextLen)
+
+        encryptCipher.init(Cipher.ENCRYPT_MODE, encKeySpec, IvParameterSpec(ivScratch))
+        p += encryptCipher.update(prefixScratch, 0, prefixLen, out, p)
+        if (dataLen > 0) p += encryptCipher.update(data, dataOffset, dataLen, out, p)
+        p += encryptCipher.doFinal(suffix, 0, suffix.size, out, p)
+
+        if (p - habStart != headerAndBodyLen) {
+            throw GeneralSecurityException("Unexpected ciphertext length while encoding payload")
+        }
+
+        signingMac.reset()
+        signingMac.update(out, habStart, headerAndBodyLen)
+        out[p++] = 0x12 // SecureMessage.signature
+        out[p++] = 32
+        signingMac.doFinal(out, p)
+        p += 32
+        return p - outOffset
+    }
+
+    /**
+     * Zero-copy decrypt: verifies and decrypts the SecureMessage in raw[0, rawLen) and writes
+     * the plaintext into [out] (which must be at least rawLen bytes). Returns plaintext length.
+     * Falls back to [decrypt] for non-standard envelopes.
+     */
+    @Synchronized
+    fun decryptInto(raw: ByteArray, rawLen: Int, out: ByteArray): Int {
+        if (rawLen > 0 && raw[0] == 0x0A.toByte()) {
+            var habStart = -1
+            var habLen = 0
+            var sigStart = -1
+            var sigLen = 0
+            val top = ProtobufLite.ArrayReader(raw, 0, rawLen)
+            while (!top.isAtEnd()) {
+                val tag = top.readVarint32()
+                when (ProtobufLite.getTagFieldNumber(tag)) {
+                    1 -> { habLen = top.readLength(); habStart = top.pos; top.pos += habLen }
+                    2 -> { sigLen = top.readLength(); sigStart = top.pos; top.pos += sigLen }
+                    else -> top.skipField(ProtobufLite.getTagWireType(tag))
+                }
+            }
+
+            if (habStart >= 0 && sigStart >= 0) {
+                // 1. Verify HMAC-SHA256 (constant time)
+                verifyingMac.reset()
+                verifyingMac.update(raw, habStart, habLen)
+                verifyingMac.doFinal(macScratch, 0)
+                if (sigLen != macScratch.size) {
+                    throw GeneralSecurityException("HMAC-SHA256 signature verification failed on SecureMessage")
+                }
+                var diff = 0
+                for (i in 0 until sigLen) diff = diff or (raw[sigStart + i].toInt() xor macScratch[i].toInt())
+                if (diff != 0) {
+                    throw GeneralSecurityException("HMAC-SHA256 signature verification failed on SecureMessage")
+                }
+
+                // 2. Locate IV and ciphertext without copying
+                var ivStart = -1
+                var msgSeq: Long? = null
+                var ctStart = -1
+                var ctLen = 0
+                val hab = ProtobufLite.ArrayReader(raw, habStart, habStart + habLen)
+                while (!hab.isAtEnd()) {
+                    val tag = hab.readVarint32()
+                    when (ProtobufLite.getTagFieldNumber(tag)) {
+                        1 -> {
+                            val hLen = hab.readLength()
+                            val header = ProtobufLite.ArrayReader(raw, hab.pos, hab.pos + hLen)
+                            while (!header.isAtEnd()) {
+                                val hTag = header.readVarint32()
+                                when (ProtobufLite.getTagFieldNumber(hTag)) {
+                                    3 -> {
+                                        val ivLen = header.readLength()
+                                        if (ivLen != 16) throw GeneralSecurityException("Invalid IV length $ivLen")
+                                        ivStart = header.pos
+                                        header.pos += ivLen
+                                    }
+                                    4 -> msgSeq = header.readVarint64()
+                                    else -> header.skipField(ProtobufLite.getTagWireType(hTag))
+                                }
+                            }
+                            hab.pos += hLen
+                        }
+                        2 -> { ctLen = hab.readLength(); ctStart = hab.pos; hab.pos += ctLen }
+                        else -> hab.skipField(ProtobufLite.getTagWireType(tag))
+                    }
+                }
+
+                if (ivStart < 0) throw GeneralSecurityException("SecureMessage has no IV")
+                if (ctStart < 0) throw GeneralSecurityException("SecureMessage has no body")
+                verifySequence(msgSeq)
+                val ivSpec = IvParameterSpec(raw, ivStart, 16)
+
+                // 3. Decrypt AES-256-CBC directly into the caller's buffer
+                decryptCipher.init(Cipher.DECRYPT_MODE, decKeySpec, ivSpec)
+                return decryptCipher.doFinal(raw, ctStart, ctLen, out, 0)
+            }
+        }
+
+        val plain = decrypt(raw.copyOf(rawLen))
+        System.arraycopy(plain, 0, out, 0, plain.size)
+        return plain.size
+    }
+
     /**
      * Auto-detects whether the incoming frame is a standard SecureMessage Protobuf
      * (starting with tag 0x0A) or a legacy byte-envelope, verifies HMAC, and decrypts.
@@ -147,9 +344,9 @@ class SecureMessageCodec(
 
         // 2. Parse HeaderAndBody
         val reader = ProtobufLite.Reader(headerAndBodyBytes)
-        var iv = ByteArray(16)
+        var iv: ByteArray? = null
         var ciphertext = ByteArray(0)
-        var msgSeq = 0L
+        var msgSeq: Long? = null
 
         while (!reader.isAtEnd()) {
             val tag = reader.readTag() ?: break
@@ -172,7 +369,8 @@ class SecureMessageCodec(
             }
         }
 
-        receiveSequenceNumber++
+        if (iv == null || iv.size != 16) throw GeneralSecurityException("SecureMessage has no valid IV")
+        verifySequence(msgSeq)
 
         // 3. Decrypt AES-256-CBC
         decryptCipher.init(Cipher.DECRYPT_MODE, decKeySpec, IvParameterSpec(iv))
