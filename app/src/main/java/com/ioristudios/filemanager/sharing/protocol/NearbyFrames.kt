@@ -132,6 +132,94 @@ object NearbyFrames {
             .toByteArray()
     }
 
+    /**
+     * Writes the bytes that precede the chunk data in an encoded PayloadTransfer frame
+     * (byte-identical to [encodePayloadTransfer]) into [dst]; returns the prefix length.
+     * The full plaintext is: prefix + chunk data + [payloadTransferSuffix].
+     * [dst] must hold at least 48 bytes.
+     */
+    fun writePayloadTransferPrefix(dst: ByteArray, payloadId: Long, offset: Long, dataLen: Int): Int {
+        val innerLen = 1 + ProtobufLite.varintSize64(payloadId) +
+            1 + ProtobufLite.varintSize64(offset) +
+            1 + ProtobufLite.varintSize32(dataLen) + dataLen +
+            2 // isLastChunk bool: tag + value
+        var p = 0
+        dst[p++] = 0x08 // field 1 (frame type), varint
+        p = ProtobufLite.putVarint32(dst, p, FRAME_PAYLOAD_TRANSFER)
+        dst[p++] = 0x12 // field 2 (payload message), length-delimited
+        p = ProtobufLite.putVarint32(dst, p, innerLen)
+        dst[p++] = 0x08 // inner field 1: payloadId
+        p = ProtobufLite.putVarint64(dst, p, payloadId)
+        dst[p++] = 0x10 // inner field 2: offset
+        p = ProtobufLite.putVarint64(dst, p, offset)
+        dst[p++] = 0x1A // inner field 3: chunk bytes
+        p = ProtobufLite.putVarint32(dst, p, dataLen)
+        return p
+    }
+
+    /** Trailing isLastChunk field of an encoded PayloadTransfer frame. */
+    fun payloadTransferSuffix(isLast: Boolean): ByteArray =
+        if (isLast) SUFFIX_LAST else SUFFIX_NOT_LAST
+
+    private val SUFFIX_LAST = byteArrayOf(0x20, 1)
+    private val SUFFIX_NOT_LAST = byteArrayOf(0x20, 0)
+
+    /** Mutable, reusable view of a PayloadTransfer frame parsed in place (no copies). */
+    class PayloadView {
+        var payloadId = 0L
+        var offset = 0L
+        var dataOffset = 0
+        var dataLength = 0
+        var isLastChunk = false
+    }
+
+    /**
+     * Parses [buf] (length [len]) in place. Returns true and fills [view] if it is a
+     * PayloadTransfer frame; the chunk data stays inside [buf] at view.dataOffset.
+     * Returns false for any other frame type (use [decodeFrame] for those).
+     */
+    fun parsePayloadInPlace(buf: ByteArray, len: Int, view: PayloadView): Boolean {
+        val outer = ProtobufLite.ArrayReader(buf, 0, len)
+        var frameType = 0
+        var innerStart = -1
+        var innerLen = 0
+        while (!outer.isAtEnd()) {
+            val tag = outer.readVarint32()
+            when (ProtobufLite.getTagFieldNumber(tag)) {
+                1 -> frameType = outer.readVarint32()
+                2 -> {
+                    innerLen = outer.readLength()
+                    innerStart = outer.pos
+                    outer.pos += innerLen
+                }
+                else -> outer.skipField(ProtobufLite.getTagWireType(tag))
+            }
+        }
+        if (frameType != FRAME_PAYLOAD_TRANSFER || innerStart < 0) return false
+
+        view.payloadId = 0L
+        view.offset = 0L
+        view.dataOffset = innerStart
+        view.dataLength = 0
+        view.isLastChunk = false
+        val r = ProtobufLite.ArrayReader(buf, innerStart, innerStart + innerLen)
+        while (!r.isAtEnd()) {
+            val tag = r.readVarint32()
+            when (ProtobufLite.getTagFieldNumber(tag)) {
+                1 -> view.payloadId = r.readVarint64()
+                2 -> view.offset = r.readVarint64()
+                3 -> {
+                    view.dataLength = r.readLength()
+                    view.dataOffset = r.pos
+                    r.pos += view.dataLength
+                }
+                4 -> view.isLastChunk = r.readVarint64() == 1L
+                else -> r.skipField(ProtobufLite.getTagWireType(tag))
+            }
+        }
+        return true
+    }
+
     fun encodePayloadAck(ack: PayloadAck): ByteArray {
         val inner = ProtobufLite.Writer()
             .writeInt64(1, ack.payloadId)

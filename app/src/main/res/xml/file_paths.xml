@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Only locations the user can browse are shareable. The previous "/" root and the
+    internal files/cache roots allowed share links to this app's private data
+    (databases, preferences), so they are intentionally not listed.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <root-path name="root" path="." />
+    <!-- Primary shared storage: /storage/emulated/0 -->
     <external-path name="external" path="." />
+    <!-- SD cards and USB drives: /storage/XXXX-XXXX -->
+    <root-path name="removable_storage" path="storage" />
+    <!-- This app's external folder (fallback location for received files) -->
     <external-files-path name="external_files" path="." />
-    <files-path name="internal_files" path="." />
-    <cache-path name="cache" path="." />
+    <!-- Temporary copies the user explicitly opens from archives -->
+    <cache-path name="archive_preview" path="archive_preview/" />
+    <cache-path name="opened_archives" path="opened_archives/" />
 </paths>

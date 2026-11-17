@@ -18,7 +18,8 @@ object PinCalculator {
                     ((digest[1].toInt() and 0xFF) shl 16) or
                     ((digest[2].toInt() and 0xFF) shl 8) or
                     (digest[3].toInt() and 0xFF)
-        val pin = (abs(value) % 9000) + 1000
+        // abs() on a Long: abs(Int.MIN_VALUE) would stay negative and yield a PIN like "-1648".
+        val pin = (abs(value.toLong()) % 9000L) + 1000L
         return pin.toString()
     }
 

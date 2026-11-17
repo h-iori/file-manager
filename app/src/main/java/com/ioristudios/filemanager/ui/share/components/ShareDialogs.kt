@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.ioristudios.filemanager.sharing.protocol.NearbyFrames
 import com.ioristudios.filemanager.sharing.resilience.TransferLifecycleStatus
 import com.ioristudios.filemanager.sharing.resilience.TransferProgressSnapshot
 import com.ioristudios.filemanager.theme.CardBorderPurple
@@ -69,6 +70,7 @@ import com.ioristudios.filemanager.theme.TextSecondary
 fun PinVerificationDialog(
     peerName: String,
     pinCode: String,
+    files: List<NearbyFrames.FilePayloadMeta> = emptyList(),
     onDecline: () -> Unit,
     onAccept: () -> Unit
 ) {
@@ -148,6 +150,12 @@ fun PinVerificationDialog(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                // What is being sent: reviewed before anything touches storage
+                if (files.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    IncomingFilesSummary(files)
+                }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
@@ -524,3 +532,66 @@ fun TransferProgressModal(
     }
 }
 
+private fun formatIncomingSize(bytes: Long): String {
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    return when {
+        gb >= 1.0 -> "%.2f GB".format(gb)
+        mb >= 1.0 -> "%.1f MB".format(mb)
+        kb >= 1.0 -> "%.0f KB".format(kb)
+        else -> "$bytes B"
+    }
+}
+
+/** Compact list of the files offered by the sender: count, total size, and up to 3 names. */
+@Composable
+private fun IncomingFilesSummary(files: List<NearbyFrames.FilePayloadMeta>) {
+    val total = files.sumOf { it.fileSize }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF0A0614))
+            .border(1.dp, ElectricCyan.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = "${files.size} file${if (files.size == 1) "" else "s"} • ${formatIncomingSize(total)}",
+            fontFamily = OutfitFontFamily,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            color = TextPrimary
+        )
+        files.take(3).forEach { file ->
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = file.fileName,
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = formatIncomingSize(file.fileSize),
+                    fontFamily = OutfitFontFamily,
+                    fontSize = 12.sp,
+                    color = TextMuted
+                )
+            }
+        }
+        if (files.size > 3) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "+ ${files.size - 3} more",
+                fontFamily = OutfitFontFamily,
+                fontSize = 12.sp,
+                color = TextMuted
+            )
+        }
+    }
+}

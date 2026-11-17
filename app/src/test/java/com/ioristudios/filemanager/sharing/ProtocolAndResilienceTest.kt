@@ -226,5 +226,175 @@ class ProtocolAndResilienceTest {
         assertTrue(manager.isCancelled)
         assertEquals(TransferLifecycleStatus.CANCELLED, manager.progress.value.status)
     }
-}
 
+    // --- Zero-copy fast path must stay wire-compatible with the original codec ---
+
+    private fun codecPair(): Pair<SecureMessageCodec, SecureMessageCodec> {
+        val k1 = ByteArray(32) { (it + 1).toByte() }
+        val k2 = ByteArray(32) { (it + 101).toByte() }
+        val h1 = ByteArray(32) { (it + 51).toByte() }
+        val h2 = ByteArray(32) { (it + 151).toByte() }
+        return SecureMessageCodec(k1, k2, h1, h2) to SecureMessageCodec(k2, k1, h2, h1)
+    }
+
+    @Test
+    fun testFastPayloadEncryptMatchesLegacyFrame() {
+        val (sender, receiver) = codecPair()
+        val sizes = intArrayOf(0, 1, 15, 16, 17, 127, 128, 300, 16383, 16384, 512 * 1024)
+        for (size in sizes) {
+            for (isLast in listOf(false, true)) {
+                val data = ByteArray(size) { (it * 31 + size).toByte() }
+                val padded = ByteArray(size + 10).also { System.arraycopy(data, 0, it, 7, size) }
+                val payloadId = 1_731_000_000_000L + size
+                val offset = size * 3L
+                val out = ByteArray(4 + SecureMessageCodec.maxEncryptedPayloadSize(size))
+                val len = sender.encryptPayloadChunk(payloadId, offset, padded, 7, size, isLast, out, 4)
+
+                // Legacy decrypt + decode must understand the fast frame exactly
+                val plain = receiver.decrypt(out.copyOfRange(4, 4 + len))
+                val expectedPlain = NearbyFrames.encodePayloadTransfer(
+                    NearbyFrames.PayloadTransfer(payloadId, offset, data, isLast)
+                )
+                assertArrayEquals("plaintext mismatch for size=$size last=$isLast", expectedPlain, plain)
+            }
+        }
+    }
+
+    @Test
+    fun testDecryptIntoAndInPlaceParseMatchLegacy() {
+        val (sender, receiver) = codecPair()
+        val data = ByteArray(200_000) { (it xor 0x5A).toByte() }
+        val legacyFrame = sender.encrypt(
+            NearbyFrames.encodePayloadTransfer(NearbyFrames.PayloadTransfer(42L, 1_048_576L, data, true))
+        )
+        val buf = ByteArray(legacyFrame.size)
+        val n = receiver.decryptInto(legacyFrame, legacyFrame.size, buf)
+
+        val view = NearbyFrames.PayloadView()
+        assertTrue(NearbyFrames.parsePayloadInPlace(buf, n, view))
+        assertEquals(42L, view.payloadId)
+        assertEquals(1_048_576L, view.offset)
+        assertTrue(view.isLastChunk)
+        assertArrayEquals(data, buf.copyOfRange(view.dataOffset, view.dataOffset + view.dataLength))
+
+        // Non-payload frames are reported as such and still decode normally
+        val ackFrame = sender.encrypt(NearbyFrames.encodePayloadAck(NearbyFrames.PayloadAck(7L, true)))
+        val ackBuf = ByteArray(ackFrame.size)
+        val ackLen = receiver.decryptInto(ackFrame, ackFrame.size, ackBuf)
+        assertFalse(NearbyFrames.parsePayloadInPlace(ackBuf, ackLen, view))
+        val decoded = NearbyFrames.decodeFrame(ackBuf.copyOf(ackLen))
+        assertTrue(decoded is NearbyFrames.ParsedFrame.Ack && decoded.ack.success)
+    }
+
+    @Test(expected = GeneralSecurityException::class)
+    fun testDecryptIntoRejectsTamperedFrame() {
+        val (sender, receiver) = codecPair()
+        val frame = sender.encrypt(
+            NearbyFrames.encodePayloadTransfer(NearbyFrames.PayloadTransfer(1L, 0L, ByteArray(1000), false))
+        )
+        frame[frame.size / 2] = (frame[frame.size / 2].toInt() xor 1).toByte()
+        receiver.decryptInto(frame, frame.size, ByteArray(frame.size))
+    }
+
+    // --- Security regression tests ---
+
+    @Test(expected = SecurityException::class)
+    fun testUkey2RejectsKeyThatDoesNotMatchCommitment() {
+        val honestClient = Ukey2Handshake(isClient = true)
+        val server = Ukey2Handshake(isClient = false)
+        val serverInit = server.processClientInitAndGenerateServerInit(honestClient.createClientInit())
+
+        // A man-in-the-middle swaps in a different client key after seeing ServerInit
+        val attacker = Ukey2Handshake(isClient = true)
+        attacker.createClientInit()
+        val forgedFinish = attacker.processServerInitAndGenerateClientFinish(serverInit)
+        server.processClientFinished(forgedFinish)
+    }
+
+    @Test
+    fun testUkey2HonestHandshakeStillPasses() {
+        val client = Ukey2Handshake(isClient = true)
+        val server = Ukey2Handshake(isClient = false)
+        val serverInit = server.processClientInitAndGenerateServerInit(client.createClientInit())
+        server.processClientFinished(client.processServerInitAndGenerateClientFinish(serverInit))
+        assertArrayEquals(client.authToken, server.authToken)
+    }
+
+    @Test(expected = GeneralSecurityException::class)
+    fun testReplayedFrameIsRejected() {
+        val (sender, receiver) = codecPair()
+        val frame = sender.encrypt("hello".toByteArray())
+        receiver.decrypt(frame)
+        receiver.decrypt(frame) // same sequence number again
+    }
+
+    @Test(expected = GeneralSecurityException::class)
+    fun testReorderedFrameIsRejected() {
+        val (sender, receiver) = codecPair()
+        sender.encrypt("first".toByteArray())
+        val second = sender.encrypt("second".toByteArray())
+        receiver.decrypt(second) // #2 arriving before #1
+    }
+
+    @Test(expected = GeneralSecurityException::class)
+    fun testFrameFromAnotherChannelIsRejected() {
+        val (sender, receiver) = codecPair()
+        val ch1Sender = sender.deriveChannelCodec("channel-1")
+        val ch2Receiver = receiver.deriveChannelCodec("channel-2")
+        val out = ByteArray(4 + SecureMessageCodec.maxEncryptedPayloadSize(100))
+        val len = ch1Sender.encryptPayloadChunk(1L, 0L, ByteArray(100), 0, 100, true, out, 4)
+        val frame = out.copyOfRange(4, 4 + len)
+        ch2Receiver.decryptInto(frame, frame.size, ByteArray(frame.size))
+    }
+
+    @Test
+    fun testChannelCodecsInteroperateAcrossPeers() {
+        val (sender, receiver) = codecPair()
+        val tx = sender.deriveChannelCodec("channel-3")
+        val rx = receiver.deriveChannelCodec("channel-3")
+        repeat(5) { i ->
+            val msg = "chunk $i".toByteArray()
+            assertArrayEquals(msg, rx.decrypt(tx.encrypt(msg)))
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun testOversizedLengthFieldDoesNotAllocate() {
+        // field 2, length-delimited, claiming ~2 GB in a 7-byte message
+        val hostile = byteArrayOf(0x12, 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x07, 0x00)
+        val reader = ProtobufLite.Reader(hostile)
+        reader.readTag()
+        reader.readBytes()
+    }
+
+    @Test
+    fun testIncomingFileNamesAreSanitized() {
+        val clean = { n: String -> com.ioristudios.filemanager.sharing.engine.ParallelTransferEngine.sanitizeIncomingFileName(n, 7L) }
+        assertEquals("passwd", clean("../../etc/passwd"))
+        assertEquals("received_7", clean(".."))
+        assertEquals("received_7", clean("."))
+        assertEquals("bashrc", clean(".bashrc"))
+        assertEquals("photogpj.apk", clean("photo‮gpj.apk"))
+        assertEquals("x.txt", clean("C:\\Windows\\x.txt"))
+        val longName = clean("a".repeat(400) + ".jpeg")
+        assertTrue(longName.length <= 150 && longName.endsWith(".jpeg"))
+    }
+
+    @Test
+    fun testSharedDisplayNamesCannotTraverse() {
+        assertEquals("settings.xml", UriPathResolver.sanitizeDisplayName("../shared_prefs/settings.xml"))
+        assertEquals("app.db", UriPathResolver.sanitizeDisplayName("..\\databases\\app.db"))
+        assertFalse(UriPathResolver.sanitizeDisplayName("..").contains(".."))
+        assertTrue(UriPathResolver.sanitizeDisplayName(null).startsWith("share_file_"))
+    }
+
+    @Test
+    fun testPinIsAlwaysFourDigits() {
+        repeat(200) {
+            val token = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            val pin = PinCalculator.calculatePin(token)
+            assertEquals(4, pin.length)
+            assertTrue(pin.all { it.isDigit() })
+        }
+    }
+}
